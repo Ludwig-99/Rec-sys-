@@ -37,6 +37,52 @@ function populateMoviesDropdown() {
 }
 
 /**
+ * Converts genre array to a binary vector representation
+ * @param {Array} genres - Array of genre names
+ * @returns {Array} Binary vector representation of genres
+ */
+function genresToVector(genres) {
+    // Create a vector with the same length as genreNames
+    const vector = new Array(genreNames.length).fill(0);
+    
+    // Set 1 for each genre present in the movie
+    genres.forEach(genre => {
+        const index = genreNames.indexOf(genre);
+        if (index !== -1) {
+            vector[index] = 1;
+        }
+    });
+    
+    return vector;
+}
+
+/**
+ * Calculates cosine similarity between two vectors
+ * @param {Array} vecA - First vector
+ * @param {Array} vecB - Second vector
+ * @returns {number} Cosine similarity score
+ */
+function cosineSimilarity(vecA, vecB) {
+    // Calculate dot product
+    let dotProduct = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+    }
+    
+    // Calculate magnitudes
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
+    
+    // Avoid division by zero
+    if (magnitudeA === 0 || magnitudeB === 0) {
+        return 0;
+    }
+    
+    // Return cosine similarity
+    return dotProduct / (magnitudeA * magnitudeB);
+}
+
+/**
  * Calculates and displays movie recommendations based on selected movie
  */
 function getRecommendations() {
@@ -65,26 +111,19 @@ function getRecommendations() {
     // Use setTimeout to allow UI to update before heavy computation
     setTimeout(() => {
         try {
-            // Create a set of liked movie's genres for faster lookup
-            const likedGenresSet = new Set(likedMovie.genres);
+            // Convert liked movie's genres to vector representation
+            const likedMovieVector = genresToVector(likedMovie.genres);
             
             // Filter out the liked movie from candidates
             const candidateMovies = movies.filter(movie => movie.id !== likedMovie.id);
             
-            // Calculate Jaccard similarity for each candidate movie
+            // Calculate cosine similarity for each candidate movie
             const scoredMovies = candidateMovies.map(candidate => {
-                const candidateGenresSet = new Set(candidate.genres);
+                // Convert candidate movie's genres to vector representation
+                const candidateVector = genresToVector(candidate.genres);
                 
-                // Calculate intersection
-                const intersection = new Set(
-                    [...likedGenresSet].filter(genre => candidateGenresSet.has(genre))
-                );
-                
-                // Calculate union
-                const union = new Set([...likedGenresSet, ...candidateGenresSet]);
-                
-                // Calculate Jaccard similarity
-                const score = union.size > 0 ? intersection.size / union.size : 0;
+                // Calculate cosine similarity
+                const score = cosineSimilarity(likedMovieVector, candidateVector);
                 
                 return { ...candidate, score };
             });
@@ -98,8 +137,9 @@ function getRecommendations() {
             // Display results
             if (topRecommendations.length > 0) {
                 const recommendationTitles = topRecommendations.map(movie => movie.title);
-                resultElement.innerText = 
-                    `Because you liked '${likedMovie.title}', we recommend: ${recommendationTitles.join(', ')}`;
+                resultElement.innerHTML = 
+                    `Because you liked <strong>${likedMovie.title}</strong>, we recommend:<br>` +
+                    `<strong>${recommendationTitles.join('</strong>, <strong>')}</strong>`;
             } else {
                 resultElement.innerText = 
                     `No recommendations found for '${likedMovie.title}'.`;
