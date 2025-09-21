@@ -1,12 +1,15 @@
 // Initialize application when window loads
 window.onload = async function() {
     try {
+        // Add a slight delay for visual effect
+        document.getElementById('result').innerHTML = 
+            '<div class="loading">Loading movie data<span class="dots"></span></div>';
+        
         await loadData();
         populateMoviesDropdown();
-        document.getElementById('result').innerText = 
-            "Data loaded. Please select a movie and click 'Get Recommendations'.";
+        document.getElementById('result').innerHTML = 
+            '<span style="color: #27ae60;">Data loaded successfully!</span> Select a movie and click "Get Recommendations".';
     } catch (error) {
-        // Error handling is already done in data.js
         console.error('Initialization error:', error);
     }
 };
@@ -94,19 +97,19 @@ function getRecommendations() {
     
     // Validate selection
     if (isNaN(selectedMovieId)) {
-        resultElement.innerText = "Please select a movie first.";
+        resultElement.innerHTML = '<span style="color: #e74c3c;">Please select a movie first.</span>';
         return;
     }
     
     // Find the liked movie
     const likedMovie = movies.find(movie => movie.id === selectedMovieId);
     if (!likedMovie) {
-        resultElement.innerText = "Error: Selected movie not found.";
+        resultElement.innerHTML = '<span style="color: #e74c3c;">Error: Selected movie not found.</span>';
         return;
     }
     
-    // Show loading message
-    resultElement.innerText = "Calculating recommendations...";
+    // Show loading animation
+    resultElement.innerHTML = '<div class="loading">Calculating recommendations<span class="dots"></span></div>';
     
     // Use setTimeout to allow UI to update before heavy computation
     setTimeout(() => {
@@ -136,17 +139,59 @@ function getRecommendations() {
             
             // Display results
             if (topRecommendations.length > 0) {
-                const recommendationTitles = topRecommendations.map(movie => movie.title);
+                const recommendationTitles = topRecommendations.map(movie => 
+                    `<span class="movie-title">${movie.title}</span>`
+                );
+                
                 resultElement.innerHTML = 
-                    `Because you liked <strong>${likedMovie.title}</strong>, we recommend:<br>` +
-                    `<strong>${recommendationTitles.join('</strong>, <strong>')}</strong>`;
+                    `Because you liked <span class="liked-movie">${likedMovie.title}</span>, we recommend:<br><br>` +
+                    `<div class="recommendation-list">${recommendationTitles.join('<br>')}</div>`;
             } else {
-                resultElement.innerText = 
-                    `No recommendations found for '${likedMovie.title}'.`;
+                resultElement.innerHTML = 
+                    `No recommendations found for <span class="liked-movie">${likedMovie.title}</span>.`;
             }
         } catch (error) {
             console.error('Error calculating recommendations:', error);
-            resultElement.innerText = "An error occurred while calculating recommendations.";
+            resultElement.innerHTML = '<span style="color: #e74c3c;">An error occurred while calculating recommendations.</span>';
         }
-    }, 10);
+    }, 800); // Slightly longer delay for a more polished feel
 }
+
+// Add CSS for loading animation
+const style = document.createElement('style');
+style.textContent = `
+    .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #3498db;
+        font-weight: 500;
+    }
+    
+    .dots::after {
+        content: '';
+        animation: dots 1.5s infinite;
+    }
+    
+    @keyframes dots {
+        0%, 20% { content: '.'; }
+        40% { content: '..'; }
+        60%, 100% { content: '...'; }
+    }
+    
+    .liked-movie {
+        color: #e74c3c;
+        font-weight: 600;
+    }
+    
+    .movie-title {
+        color: #27ae60;
+        font-weight: 600;
+    }
+    
+    .recommendation-list {
+        line-height: 1.8;
+        margin-top: 10px;
+    }
+`;
+document.head.appendChild(style);
