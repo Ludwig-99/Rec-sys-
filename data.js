@@ -1,8 +1,8 @@
-// Global variables for storing movie and rating data
+// Global variables for movie and rating data
 let movies = [];
 let ratings = [];
 
-// Genre names as defined in the u.item file
+// Genre names in the order they appear in the u.item file
 const genreNames = [
     "Action", "Adventure", "Animation", "Children's", "Comedy",
     "Crime", "Documentary", "Drama", "Fantasy", "Film-Noir",
@@ -10,7 +10,9 @@ const genreNames = [
     "Thriller", "War", "Western"
 ];
 
-// Primary function to load data from files
+/**
+ * Asynchronously loads and parses movie and rating data
+ */
 async function loadData() {
     try {
         // Load and parse movie data
@@ -30,16 +32,16 @@ async function loadData() {
         parseRatingData(ratingsText);
     } catch (error) {
         console.error('Error loading data:', error);
-        const resultElement = document.getElementById('result');
-        if (resultElement) {
-            resultElement.textContent = `Error: ${error.message}. Please make sure u.item and u.data files are in the correct location.`;
-            resultElement.className = 'error';
-        }
+        document.getElementById('result').innerText = 
+            `Error: ${error.message}. Please make sure u.item and u.data files are in the correct location.`;
         throw error; // Re-throw to allow script.js to handle the error
     }
 }
 
-// Parse movie data from u.item format
+/**
+ * Parses movie data from the u.item file format
+ * @param {string} text - Raw text content from u.item file
+ */
 function parseItemData(text) {
     const lines = text.split('\n');
     
@@ -51,16 +53,24 @@ function parseItemData(text) {
         
         const id = parseInt(fields[0]);
         const title = fields[1];
+        const genres = [];
         
-        // Extract genres (last 19 fields)
-        const genreValues = fields.slice(5, 24).map(value => parseInt(value));
-        const genres = genreNames.filter((_, index) => genreValues[index] === 1);
+        // Extract genre information (fields 5-23)
+        for (let i = 0; i < 18; i++) {
+            const genreIndex = i + 5;
+            if (genreIndex < fields.length && fields[genreIndex] === '1') {
+                genres.push(genreNames[i]);
+            }
+        }
         
         movies.push({ id, title, genres });
     }
 }
 
-// Parse rating data from u.data format
+/**
+ * Parses rating data from the u.data file format
+ * @param {string} text - Raw text content from u.data file
+ */
 function parseRatingData(text) {
     const lines = text.split('\n');
     
