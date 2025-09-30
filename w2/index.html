@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Factorization Movie Recommender</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background">
+        <div class="bubble bubble-1"></div>
+        <div class="bubble bubble-2"></div>
+        <div class="bubble bubble-3"></div>
+        <div class="bubble bubble-4"></div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>Matrix Factorization Movie Recommender</h1>
+            <div class="subtitle">AI-Powered Movie Rating Predictions</div>
+        </div>
+        
+        <div class="content">
+            <p class="instructions">Select a user and movie to predict the rating using TensorFlow.js</p>
+            
+            <div class="controls">
+                <div class="input-group">
+                    <label for="user-select">Select User:</label>
+                    <div class="select-wrapper">
+                        <select id="user-select">
+                            <option value="" disabled selected>Select a user...</option>
+                        </select>
+                        <div class="select-arrow"></div>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label for="movie-select">Select Movie:</label>
+                    <div class="select-wrapper">
+                        <select id="movie-select">
+                            <option value="" disabled selected>Select a movie...</option>
+                        </select>
+                        <div class="select-arrow"></div>
+                    </div>
+                </div>
+                
+                <button id="predict-btn" onclick="predictRating()">
+                    <span>Predict Rating</span>
+                    <div class="button-icon">→</div>
+                </button>
+            </div>
+            
+            <div id="result-box">
+                <div class="result-header">Prediction Results</div>
+                <p id="result">Model will be trained after data loads...</p>
+            </div>
+
+            <div class="training-info">
+                <div class="progress-container">
+                    <div class="progress-label">Training Progress:</div>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div id="progress-text" class="progress-text">0%</div>
+                </div>
+                <div id="training-status" class="training-status">Initializing...</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div class="logo">MovieMatrix AI</div>
+            <div class="tech">Powered by TensorFlow.js Matrix Factorization</div>
+        </div>
+    </div>
+
+    <!-- Load TensorFlow.js first, then our modules -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
