@@ -80,7 +80,8 @@ class MovieLensApp {
                 this.items.set(itemId, {
                     title: title.replace(/\(\d{4}\)$/, '').trim(),
                     year: year,
-                    genres: movieGenres.map(genreId => this.genres.get(genreId) || `Genre${genreId}`)
+                    genres: movieGenres.map(genreId => this.genres.get(genreId) || `Genre${genreId}`),
+                    primaryGenre: movieGenres.length > 0 ? movieGenres[0] : 0
                 });
                 
                 itemGenres.set(itemId, movieGenres.length > 0 ? movieGenres[0] : 0);
@@ -96,12 +97,14 @@ class MovieLensApp {
             
             this.interactions = interactionsLines.slice(0, this.config.maxInteractions).map(line => {
                 const [userId, itemId, rating, timestamp] = line.split('\t');
+                const item = this.items.get(parseInt(itemId));
                 return {
                     userId: parseInt(userId),
                     itemId: parseInt(itemId),
                     rating: parseFloat(rating),
                     timestamp: parseInt(timestamp),
-                    genreId: itemGenres.get(parseInt(itemId)) || 0
+                    genreId: item ? item.primaryGenre : 0,
+                    liked: parseFloat(rating) >= 4.0 // Binary label for high ratings
                 };
             });
             
@@ -176,12 +179,11 @@ class MovieLensApp {
         document.getElementById('train').disabled = true;
         this.lossHistory = [];
         
-        this.updateStatus('🚀 Initializing Two-Tower model with genre embeddings...');
+        this.updateStatus('🚀 Initializing MLP model with genre embeddings...');
         
-        // Initialize model with genre information
-        this.model = new TwoTowerModel(
+        // Initialize MLP model
+        this.model = new MLPGenreModel(
             this.userMap.size,
-            this.itemMap.size,
             this.genres.size,
             this.config.embeddingDim
         );
@@ -189,8 +191,9 @@ class MovieLensApp {
         // Prepare training data
         const userIndices = this.interactions.map(i => this.userMap.get(i.userId));
         const genreIndices = this.interactions.map(i => i.genreId);
+        const labels = this.interactions.map(i => i.liked ? 1 : 0);
         
-        this.updateStatus('🎯 Starting model training with in-batch negative sampling...');
+        this.updateStatus('🎯 Starting model training with binary classification...');
         
         // Training loop
         const numBatches = Math.ceil(userIndices.length / this.config.batchSize);
@@ -204,8 +207,9 @@ class MovieLensApp {
                 
                 const batchUsers = userIndices.slice(start, end);
                 const batchGenres = genreIndices.slice(start, end);
+                const batchLabels = labels.slice(start, end);
                 
-                const loss = await this.model.trainStep(batchUsers, batchGenres);
+                const loss = await this.model.trainStep(batchUsers, batchGenres, batchLabels);
                 epochLoss += loss;
                 
                 this.lossHistory.push(loss);
@@ -233,8 +237,8 @@ class MovieLensApp {
         this.updateStatus('🎉 Training completed! Click "Test" to generate personalized recommendations.');
         this.updateProgress(0);
         
-        // Visualize embeddings
-        this.visualizeEmbeddings();
+        // Visualize genre preferences
+        this.visualizeGenrePreferences();
     }
     
     updateLossChart() {
@@ -295,27 +299,19 @@ class MovieLensApp {
         ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, 15, 50);
     }
     
-    async visualizeEmbeddings() {
+    async visualizeGenrePreferences() {
         if (!this.model) return;
         
-        this.updateStatus('🔄 Computing embedding visualization with PCA...');
+        this.updateStatus('🔄 Computing genre preference visualization...');
         
         const canvas = document.getElementById('embeddingChart');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         try {
-            // Get all item embeddings (genre-based)
-            const itemEmbeddings = await this.model.getItemEmbeddings();
-            
-            // Sample items for visualization
-            const sampleSize = Math.min(300, this.itemMap.size);
-            const sampleIndices = Array.from({length: sampleSize}, (_, i) => 
-                Math.floor(i * this.itemMap.size / sampleSize)
-            );
-            
-            const sampleEmbeddings = sampleIndices.map(i => itemEmbeddings[i]);
-            const projected = this.computePCA(sampleEmbeddings, 2);
+            // Get genre embeddings
+            const genreEmbeddings = await this.model.getGenreEmbeddings();
+            const projected = this.computePCA(genreEmbeddings, 2);
             
             // Normalize to canvas coordinates
             const xs = projected.map(p => p[0]);
@@ -329,48 +325,44 @@ class MovieLensApp {
             const xRange = xMax - xMin || 1;
             const yRange = yMax - yMin || 1;
             
-            // Draw points with gradient colors based on position
-            sampleIndices.forEach((itemIdx, i) => {
-                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 80) + 40;
-                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 80) + 40;
+            // Draw genre points
+            genreEmbeddings.forEach((_, genreId) => {
+                const x = ((projected[genreId][0] - xMin) / xRange) * (canvas.width - 100) + 50;
+                const y = ((projected[genreId][1] - yMin) / yRange) * (canvas.height - 100) + 50;
                 
-                // Color based on position in the embedding space
-                const hue = (x / canvas.width) * 360;
-                const saturation = 70 + (y / canvas.height) * 30;
-                const lightness = 50;
-                
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 10);
-                gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, 0.9)`);
-                gradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness + 20}%, 0.4)`);
+                // Color based on genre
+                const hue = (genreId / this.genres.size) * 360;
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
+                gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.9)`);
+                gradient.addColorStop(1, `hsla(${hue}, 80%, 60%, 0.3)`);
                 
                 ctx.beginPath();
-                ctx.arc(x, y, 8, 0, 2 * Math.PI);
+                ctx.arc(x, y, 10, 0, 2 * Math.PI);
                 ctx.fillStyle = gradient;
                 ctx.fill();
                 
-                // Add subtle glow
-                ctx.shadowColor = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.5)`;
-                ctx.shadowBlur = 15;
-                ctx.fill();
-                ctx.shadowBlur = 0;
+                // Add genre label
+                const genreName = this.genres.get(genreId) || `Genre ${genreId}`;
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = 'bold 12px "Segoe UI"';
+                ctx.fillText(genreName, x + 15, y + 5);
             });
             
-            // Add title and labels
+            // Add title
             ctx.fillStyle = '#2c3e50';
             ctx.font = 'bold 18px "Segoe UI"';
             ctx.fillText('Genre Embeddings Projection (PCA)', 20, 30);
             ctx.font = '14px "Segoe UI"';
             ctx.fillStyle = '#7f8c8d';
-            ctx.fillText(`Visualizing ${sampleSize} genre embeddings in 2D space`, 20, 55);
+            ctx.fillText(`Visualizing ${this.genres.size} genre preferences`, 20, 55);
             
-            this.updateStatus('✅ Embedding visualization completed.');
+            this.updateStatus('✅ Genre visualization completed.');
         } catch (error) {
             this.updateStatus(`❌ Error in visualization: ${error.message}`);
         }
     }
     
     computePCA(embeddings, dimensions) {
-        // Simple PCA using power iteration
         const n = embeddings.length;
         const dim = embeddings[0].length;
         
@@ -446,30 +438,45 @@ class MovieLensApp {
             const userInteractions = this.userTopRated.get(randomUser);
             const userIndex = this.userMap.get(randomUser);
             
-            // Get user embedding
-            const userEmb = this.model.getUserEmbedding(userIndex);
+            // Get predictions for all genres for this user
+            const genrePredictions = await this.model.getPredictionsForUser(userIndex, Array.from(this.genres.keys()));
             
-            // Get all item embeddings and compute scores
-            const itemEmbeddings = await this.model.getItemEmbeddings();
-            const allItemScores = await this.model.getScoresForAllItems(userEmb, itemEmbeddings);
-            
-            // Filter out items the user has already rated
+            // Find movies that match top predicted genres and user hasn't rated
             const ratedItemIds = new Set(userInteractions.map(i => i.itemId));
-            const candidateScores = [];
+            const candidateMovies = [];
             
-            allItemScores.forEach((score, itemIndex) => {
-                const itemId = this.reverseItemMap.get(itemIndex);
+            // Group movies by their primary genre
+            const moviesByGenre = new Map();
+            this.items.forEach((item, itemId) => {
                 if (!ratedItemIds.has(itemId)) {
-                    candidateScores.push({ itemId, score, itemIndex });
+                    const genreId = item.primaryGenre;
+                    if (!moviesByGenre.has(genreId)) {
+                        moviesByGenre.set(genreId, []);
+                    }
+                    moviesByGenre.get(genreId).push({ itemId, item });
                 }
             });
             
-            // Sort by score descending and take top 10
-            candidateScores.sort((a, b) => b.score - a.score);
-            const topRecommendations = candidateScores.slice(0, 10);
+            // For each top genre, take top movies
+            const topRecommendations = [];
+            genrePredictions.slice(0, 5).forEach(({ genreId, score }) => {
+                const movies = moviesByGenre.get(genreId) || [];
+                // Take top 2 movies from each preferred genre
+                movies.slice(0, 2).forEach(movie => {
+                    topRecommendations.push({
+                        itemId: movie.itemId,
+                        score: score,
+                        item: movie.item
+                    });
+                });
+            });
+            
+            // Sort by score and take top 10
+            topRecommendations.sort((a, b) => b.score - a.score);
+            const finalRecommendations = topRecommendations.slice(0, 10);
             
             // Display results
-            this.displayResults(randomUser, userInteractions, topRecommendations);
+            this.displayResults(randomUser, userInteractions, finalRecommendations);
             
         } catch (error) {
             this.updateStatus(`❌ Error generating recommendations: ${error.message}`);
@@ -531,8 +538,8 @@ class MovieLensApp {
         `;
         
         recommendations.forEach((rec, index) => {
-            const item = this.items.get(rec.itemId);
-            const scorePercent = Math.min(100, Math.round(rec.score * 25));
+            const item = rec.item;
+            const scorePercent = Math.min(100, Math.round(rec.score * 100));
             const genreText = item.genres.slice(0, 2).join(', ');
             html += `
                 <tr>
@@ -550,7 +557,7 @@ class MovieLensApp {
                 </div>
             </div>
             <div style="text-align: center; margin-top: 25px; color: #7f8c8d; font-style: italic;">
-                Recommendations based on genre preferences and user behavior patterns
+                Recommendations based on genre preferences learned by MLP model
             </div>
         `;
         
