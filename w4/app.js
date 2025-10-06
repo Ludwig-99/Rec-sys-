@@ -3,6 +3,7 @@ class MovieLensApp {
     constructor() {
         this.interactions = [];
         this.items = new Map();
+        this.genres = new Map();
         this.userMap = new Map();
         this.itemMap = new Map();
         this.reverseUserMap = new Map();
@@ -29,16 +30,66 @@ class MovieLensApp {
         document.getElementById('train').addEventListener('click', () => this.train());
         document.getElementById('test').addEventListener('click', () => this.test());
         
-        this.updateStatus('Click "Load Data" to start');
+        this.updateStatus('🎬 Click "Load Data" to start exploring MovieLens 100K');
     }
     
     async loadData() {
-        this.updateStatus('Loading MovieLens 100K dataset...');
+        this.updateStatus('📥 Loading MovieLens 100K dataset...');
         this.updateProgress(10);
         
         try {
+            // Load genres first
+            this.updateStatus('📚 Loading genre information...');
+            const genresResponse = await fetch('data/u.genre');
+            const genresText = await genresResponse.text();
+            const genresLines = genresText.trim().split('\n').filter(line => line);
+            
+            genresLines.forEach(line => {
+                const [genreName, genreId] = line.split('|');
+                if (genreName && genreId) {
+                    this.genres.set(parseInt(genreId), genreName.trim());
+                }
+            });
+            
+            this.updateProgress(20);
+            
+            // Load items with genre information
+            this.updateStatus('🎭 Loading movie information and genres...');
+            const itemsResponse = await fetch('data/u.item');
+            const itemsText = await itemsResponse.text();
+            const itemsLines = itemsText.trim().split('\n');
+            
+            const itemGenres = new Map();
+            
+            itemsLines.forEach(line => {
+                const parts = line.split('|');
+                const itemId = parseInt(parts[0]);
+                const title = parts[1];
+                const yearMatch = title.match(/\((\d{4})\)$/);
+                const year = yearMatch ? parseInt(yearMatch[1]) : null;
+                
+                // Extract genre information (last 19 fields)
+                const genreFields = parts.slice(5, 24);
+                const movieGenres = [];
+                genreFields.forEach((isGenre, index) => {
+                    if (isGenre === '1') {
+                        movieGenres.push(index); // Genre IDs are 0-based in the dataset
+                    }
+                });
+                
+                this.items.set(itemId, {
+                    title: title.replace(/\(\d{4}\)$/, '').trim(),
+                    year: year,
+                    genres: movieGenres.map(genreId => this.genres.get(genreId) || `Genre${genreId}`)
+                });
+                
+                itemGenres.set(itemId, movieGenres.length > 0 ? movieGenres[0] : 0);
+            });
+            
+            this.updateProgress(50);
+            
             // Load interactions
-            this.updateStatus('Loading user ratings...');
+            this.updateStatus('⭐ Loading user ratings...');
             const interactionsResponse = await fetch('data/u.data');
             const interactionsText = await interactionsResponse.text();
             const interactionsLines = interactionsText.trim().split('\n');
@@ -49,44 +100,25 @@ class MovieLensApp {
                     userId: parseInt(userId),
                     itemId: parseInt(itemId),
                     rating: parseFloat(rating),
-                    timestamp: parseInt(timestamp)
+                    timestamp: parseInt(timestamp),
+                    genreId: itemGenres.get(parseInt(itemId)) || 0
                 };
             });
             
-            this.updateProgress(40);
-            
-            // Load items
-            this.updateStatus('Loading movie information...');
-            const itemsResponse = await fetch('data/u.item');
-            const itemsText = await itemsResponse.text();
-            const itemsLines = itemsText.trim().split('\n');
-            
-            itemsLines.forEach(line => {
-                const parts = line.split('|');
-                const itemId = parseInt(parts[0]);
-                const title = parts[1];
-                const yearMatch = title.match(/\((\d{4})\)$/);
-                const year = yearMatch ? parseInt(yearMatch[1]) : null;
-                
-                this.items.set(itemId, {
-                    title: title.replace(/\(\d{4}\)$/, '').trim(),
-                    year: year
-                });
-            });
-            
-            this.updateProgress(70);
+            this.updateProgress(80);
             
             // Create mappings and find users with sufficient ratings
             this.createMappings();
             this.findQualifiedUsers();
             
             this.updateProgress(100);
-            this.updateStatus(`✅ Successfully loaded ${this.interactions.length} interactions and ${this.items.size} movies. ${this.userTopRated.size} users have 20+ ratings.`);
+            this.updateStatus(`✅ Successfully loaded ${this.interactions.length} interactions, ${this.items.size} movies, and ${this.genres.size} genres. ${this.userTopRated.size} users have 20+ ratings.`);
             
             document.getElementById('train').disabled = false;
             
         } catch (error) {
             this.updateStatus(`❌ Error loading data: ${error.message}`);
+            console.error('Data loading error:', error);
         }
     }
     
@@ -144,18 +176,19 @@ class MovieLensApp {
         document.getElementById('train').disabled = true;
         this.lossHistory = [];
         
-        this.updateStatus('🚀 Initializing Two-Tower model architecture...');
+        this.updateStatus('🚀 Initializing Two-Tower model with genre embeddings...');
         
-        // Initialize model
+        // Initialize model with genre information
         this.model = new TwoTowerModel(
             this.userMap.size,
             this.itemMap.size,
+            this.genres.size,
             this.config.embeddingDim
         );
         
         // Prepare training data
         const userIndices = this.interactions.map(i => this.userMap.get(i.userId));
-        const itemIndices = this.interactions.map(i => this.itemMap.get(i.itemId));
+        const genreIndices = this.interactions.map(i => i.genreId);
         
         this.updateStatus('🎯 Starting model training with in-batch negative sampling...');
         
@@ -170,9 +203,9 @@ class MovieLensApp {
                 const end = Math.min(start + this.config.batchSize, userIndices.length);
                 
                 const batchUsers = userIndices.slice(start, end);
-                const batchItems = itemIndices.slice(start, end);
+                const batchGenres = genreIndices.slice(start, end);
                 
-                const loss = await this.model.trainStep(batchUsers, batchItems);
+                const loss = await this.model.trainStep(batchUsers, batchGenres);
                 epochLoss += loss;
                 
                 this.lossHistory.push(loss);
@@ -215,6 +248,7 @@ class MovieLensApp {
         // Create gradient background
         const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
         gradient.addColorStop(0, '#00a8ff');
+        gradient.addColorStop(0.5, '#ff6bcb');
         gradient.addColorStop(1, '#00d2a8');
         
         const maxLoss = Math.max(...this.lossHistory);
@@ -222,14 +256,15 @@ class MovieLensApp {
         const range = maxLoss - minLoss || 1;
         
         ctx.strokeStyle = gradient;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         ctx.beginPath();
         
         // Smooth line drawing
         this.lossHistory.forEach((loss, index) => {
             const x = (index / this.lossHistory.length) * canvas.width;
-            const y = canvas.height - ((loss - minLoss) / range) * canvas.height * 0.9 - 10;
+            const y = canvas.height - ((loss - minLoss) / range) * canvas.height * 0.9 - 15;
             
             if (index === 0) {
                 ctx.moveTo(x, y);
@@ -246,17 +281,18 @@ class MovieLensApp {
         ctx.closePath();
         
         const fillGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        fillGradient.addColorStop(0, 'rgba(0, 168, 255, 0.2)');
+        fillGradient.addColorStop(0, 'rgba(0, 168, 255, 0.3)');
         fillGradient.addColorStop(1, 'rgba(0, 210, 168, 0.1)');
         ctx.fillStyle = fillGradient;
         ctx.fill();
         
         // Add labels with modern styling
         ctx.fillStyle = '#2c3e50';
-        ctx.font = '12px "Segoe UI"';
-        ctx.fillText(`Min: ${minLoss.toFixed(4)}`, 10, canvas.height - 10);
-        ctx.fillText(`Max: ${maxLoss.toFixed(4)}`, 10, 25);
-        ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, 10, 45);
+        ctx.font = 'bold 14px "Segoe UI"';
+        ctx.fillText(`Min Loss: ${minLoss.toFixed(4)}`, 15, canvas.height - 15);
+        ctx.fillText(`Max Loss: ${maxLoss.toFixed(4)}`, 15, 30);
+        ctx.fillStyle = '#ff6bcb';
+        ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, 15, 50);
     }
     
     async visualizeEmbeddings() {
@@ -269,17 +305,16 @@ class MovieLensApp {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         try {
+            // Get all item embeddings (genre-based)
+            const itemEmbeddings = await this.model.getItemEmbeddings();
+            
             // Sample items for visualization
             const sampleSize = Math.min(300, this.itemMap.size);
             const sampleIndices = Array.from({length: sampleSize}, (_, i) => 
                 Math.floor(i * this.itemMap.size / sampleSize)
             );
             
-            // Get embeddings and compute PCA
-            const embeddingsTensor = this.model.getItemEmbeddings();
-            const embeddings = embeddingsTensor.arraySync();
-            const sampleEmbeddings = sampleIndices.map(i => embeddings[i]);
-            
+            const sampleEmbeddings = sampleIndices.map(i => itemEmbeddings[i]);
             const projected = this.computePCA(sampleEmbeddings, 2);
             
             // Normalize to canvas coordinates
@@ -294,35 +329,39 @@ class MovieLensApp {
             const xRange = xMax - xMin || 1;
             const yRange = yMax - yMin || 1;
             
-            // Draw points with gradient colors
+            // Draw points with gradient colors based on position
             sampleIndices.forEach((itemIdx, i) => {
-                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 60) + 30;
-                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 60) + 30;
+                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 80) + 40;
+                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 80) + 40;
                 
-                // Create radial gradient for each point
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 8);
-                gradient.addColorStop(0, 'rgba(0, 168, 255, 0.8)');
-                gradient.addColorStop(1, 'rgba(0, 210, 168, 0.4)');
+                // Color based on position in the embedding space
+                const hue = (x / canvas.width) * 360;
+                const saturation = 70 + (y / canvas.height) * 30;
+                const lightness = 50;
+                
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 10);
+                gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, 0.9)`);
+                gradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness + 20}%, 0.4)`);
                 
                 ctx.beginPath();
-                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.arc(x, y, 8, 0, 2 * Math.PI);
                 ctx.fillStyle = gradient;
                 ctx.fill();
                 
-                // Add subtle glow effect
-                ctx.shadowColor = 'rgba(0, 168, 255, 0.3)';
-                ctx.shadowBlur = 10;
+                // Add subtle glow
+                ctx.shadowColor = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.5)`;
+                ctx.shadowBlur = 15;
                 ctx.fill();
                 ctx.shadowBlur = 0;
             });
             
-            // Add title and labels with modern styling
+            // Add title and labels
             ctx.fillStyle = '#2c3e50';
-            ctx.font = 'bold 16px "Segoe UI"';
-            ctx.fillText('Item Embeddings Projection (PCA)', 20, 25);
-            ctx.font = '13px "Segoe UI"';
+            ctx.font = 'bold 18px "Segoe UI"';
+            ctx.fillText('Genre Embeddings Projection (PCA)', 20, 30);
+            ctx.font = '14px "Segoe UI"';
             ctx.fillStyle = '#7f8c8d';
-            ctx.fillText(`Visualizing ${sampleSize} movie embeddings in 2D space`, 20, 45);
+            ctx.fillText(`Visualizing ${sampleSize} genre embeddings in 2D space`, 20, 55);
             
             this.updateStatus('✅ Embedding visualization completed.');
         } catch (error) {
@@ -410,8 +449,9 @@ class MovieLensApp {
             // Get user embedding
             const userEmb = this.model.getUserEmbedding(userIndex);
             
-            // Get scores for all items
-            const allItemScores = await this.model.getScoresForAllItems(userEmb);
+            // Get all item embeddings and compute scores
+            const itemEmbeddings = await this.model.getItemEmbeddings();
+            const allItemScores = await this.model.getScoresForAllItems(userEmb, itemEmbeddings);
             
             // Filter out items the user has already rated
             const ratedItemIds = new Set(userInteractions.map(i => i.itemId));
@@ -452,7 +492,7 @@ class MovieLensApp {
                                 <th>Rank</th>
                                 <th>Movie Title</th>
                                 <th>Rating</th>
-                                <th>Year</th>
+                                <th>Genres</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -461,12 +501,13 @@ class MovieLensApp {
         topRated.forEach((interaction, index) => {
             const item = this.items.get(interaction.itemId);
             const stars = '★'.repeat(Math.round(interaction.rating)) + '☆'.repeat(5 - Math.round(interaction.rating));
+            const genreText = item.genres.slice(0, 2).join(', ');
             html += `
                 <tr>
-                    <td><strong>${index + 1}</strong></td>
+                    <td><strong>#${index + 1}</strong></td>
                     <td>${item.title}</td>
-                    <td style="color: #ff6bcb;">${stars}</td>
-                    <td>${item.year || 'N/A'}</td>
+                    <td><span class="stars">${stars}</span></td>
+                    <td style="font-size: 0.9em; color: #7f8c8d;">${genreText}</td>
                 </tr>
             `;
         });
@@ -483,7 +524,7 @@ class MovieLensApp {
                                 <th>Rank</th>
                                 <th>Movie Title</th>
                                 <th>Match Score</th>
-                                <th>Year</th>
+                                <th>Genres</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -491,13 +532,14 @@ class MovieLensApp {
         
         recommendations.forEach((rec, index) => {
             const item = this.items.get(rec.itemId);
-            const scorePercent = Math.min(100, Math.round(rec.score * 20));
+            const scorePercent = Math.min(100, Math.round(rec.score * 25));
+            const genreText = item.genres.slice(0, 2).join(', ');
             html += `
                 <tr>
-                    <td><strong>${index + 1}</strong></td>
+                    <td><strong>#${index + 1}</strong></td>
                     <td>${item.title}</td>
-                    <td style="color: #00d2a8;">${scorePercent}%</td>
-                    <td>${item.year || 'N/A'}</td>
+                    <td><span class="score">${scorePercent}%</span></td>
+                    <td style="font-size: 0.9em; color: #7f8c8d;">${genreText}</td>
                 </tr>
             `;
         });
@@ -506,6 +548,9 @@ class MovieLensApp {
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <div style="text-align: center; margin-top: 25px; color: #7f8c8d; font-style: italic;">
+                Recommendations based on genre preferences and user behavior patterns
             </div>
         `;
         
