@@ -1,122 +1,151 @@
-// two-tower.js
-class MLPGenreModel {
-    constructor(numUsers, numGenres, embDim, hiddenDim = 64) {
+class TwoTowerModel {
+    constructor(numUsers, numItems, embDim) {
         this.numUsers = numUsers;
-        this.numGenres = numGenres;
+        this.numItems = numItems;
         this.embDim = embDim;
-        this.hiddenDim = hiddenDim;
         
-        // Build MLP model with concatenated user and genre embeddings
-        this.model = tf.sequential({
-            layers: [
-                // The model will take two inputs: user indices and genre indices
-                // We'll handle concatenation in the forward pass
-                tf.layers.dense({
-                    inputShape: [embDim + hiddenDim], // Concatenated embeddings
-                    units: hiddenDim,
-                    activation: 'relu',
-                    name: 'hidden_layer'
-                }),
-                tf.layers.dense({
-                    units: 1,
-                    activation: 'sigmoid',
-                    name: 'output_layer'
-                })
-            ]
-        });
+        // Two-Tower architecture with one hidden layer as required
+        // User tower: user_id -> embedding -> hidden layer -> user representation
+        this.userEmbedding = tf.variable(
+            tf.randomNormal([numUsers, embDim], 0, 0.05), 
+            true, 
+            'userEmbedding'
+        );
         
-        // Separate embedding layers
-        this.userEmbedding = tf.layers.embedding({
-            inputDim: numUsers,
-            outputDim: embDim,
-            name: 'user_embedding'
-        });
+        // Item tower: item_id -> embedding -> hidden layer -> item representation  
+        this.itemEmbedding = tf.variable(
+            tf.randomNormal([numItems, embDim], 0, 0.05),
+            true,
+            'itemEmbedding'
+        );
         
-        this.genreEmbedding = tf.layers.embedding({
-            inputDim: numGenres,
-            outputDim: hiddenDim,
-            name: 'genre_embedding'
-        });
+        // Hidden layers for both towers to add deep learning capability
+        // User tower hidden layer weights
+        this.userHiddenWeights = tf.variable(
+            tf.randomNormal([embDim, embDim], 0, 0.05),
+            true,
+            'userHiddenWeights'
+        );
         
-        // Adam optimizer
+        this.userHiddenBias = tf.variable(
+            tf.zeros([embDim]),
+            true,
+            'userHiddenBias'
+        );
+        
+        // Item tower hidden layer weights
+        this.itemHiddenWeights = tf.variable(
+            tf.randomNormal([embDim, embDim], 0, 0.05),
+            true,
+            'itemHiddenWeights'
+        );
+        
+        this.itemHiddenBias = tf.variable(
+            tf.zeros([embDim]),
+            true,
+            'itemHiddenBias'
+        );
+        
         this.optimizer = tf.train.adam(0.001);
     }
-    
-    // Forward pass: concatenate user and genre embeddings, then pass through MLP
-    forward(userIndices, genreIndices) {
+
+    // User tower forward pass with one hidden layer
+    userForward(userIndices) {
         return tf.tidy(() => {
-            const userTensor = tf.tensor1d(userIndices, 'int32');
-            const genreTensor = tf.tensor1d(genreIndices, 'int32');
+            // Look up user embeddings
+            const userEmb = tf.gather(this.userEmbedding, userIndices);
             
-            const userEmbs = this.userEmbedding.apply(userTensor);
-            const genreEmbs = this.genreEmbedding.apply(genreTensor);
+            // Pass through hidden layer with ReLU activation
+            const hiddenOutput = tf.relu(
+                tf.add(tf.matMul(userEmb, this.userHiddenWeights), this.userHiddenBias)
+            );
             
-            // Concatenate embeddings along the last dimension
-            const concatenated = tf.concat([userEmbs, genreEmbs], -1);
-            
-            return this.model.apply(concatenated).squeeze();
+            return hiddenOutput;
         });
     }
-    
-    // Score function: returns prediction probability
-    score(predictions) {
-        return predictions;
-    }
-    
-    async trainStep(userIndices, genreIndices, labels) {
-        return await tf.tidy(() => {
-            const loss = () => {
-                const predictions = this.forward(userIndices, genreIndices);
-                const labelTensor = tf.tensor1d(labels, 'float32');
-                
-                // Binary crossentropy loss for rating prediction
-                const loss = tf.losses.sigmoidCrossEntropy(labelTensor, predictions);
-                return loss;
-            };
+
+    // Item tower forward pass with one hidden layer  
+    itemForward(itemIndices) {
+        return tf.tidy(() => {
+            // Look up item embeddings
+            const itemEmb = tf.gather(this.itemEmbedding, itemIndices);
             
-            // Compute gradients and update model
-            const { value, grads } = this.optimizer.computeGradients(loss);
-            this.optimizer.applyGradients(grads);
+            // Pass through hidden layer with ReLU activation
+            const hiddenOutput = tf.relu(
+                tf.add(tf.matMul(itemEmb, this.itemHiddenWeights), this.itemHiddenBias)
+            );
             
-            return value.dataSync()[0];
+            return hiddenOutput;
         });
     }
-    
-    // Get predictions for a user across all genres
-    async getPredictionsForUser(userIndex, allGenres) {
-        return await tf.tidy(() => {
-            const userIndices = Array(allGenres.length).fill(userIndex);
-            const predictions = this.forward(userIndices, allGenres);
-            const scores = predictions.dataSync();
+
+    // Score function using dot product similarity
+    // Dot product measures cosine similarity when embeddings are normalized
+    score(userEmbeddings, itemEmbeddings) {
+        return tf.tidy(() => {
+            // Normalize embeddings for stable training
+            const normalizedUser = tf.div(userEmbeddings, tf.norm(userEmbeddings, 2, -1, true));
+            const normalizedItem = tf.div(itemEmbeddings, tf.norm(itemEmbeddings, 2, -1, true));
             
-            // Combine genres with their scores
-            const genreScores = allGenres.map((genreId, index) => ({
-                genreId: genreId,
-                score: scores[index]
-            }));
-            
-            // Sort by score descending
-            genreScores.sort((a, b) => b.score - a.score);
-            
-            return genreScores;
+            // Compute dot product along the last dimension
+            return tf.sum(tf.mul(normalizedUser, normalizedItem), -1);
         });
     }
-    
-    // Get genre embeddings for visualization
-    async getGenreEmbeddings() {
-        return await tf.tidy(() => {
-            const allGenreIndices = Array.from({length: this.numGenres}, (_, i) => i);
-            const genreTensor = tf.tensor1d(allGenreIndices, 'int32');
-            const embeddings = this.genreEmbedding.apply(genreTensor);
-            return embeddings.arraySync();
+
+    // Training step using in-batch sampled softmax loss
+    // This creates a multi-class classification problem where the positive item
+    // should score higher than all other items in the batch
+    async trainStep(userIndices, itemIndices) {
+        return tf.tidy(() => {
+            const userEmbs = this.userForward(userIndices);
+            const itemEmbs = this.itemForward(itemIndices);
+            
+            // Compute scores for all user-item pairs in batch
+            // This creates a matrix where each user should score highest with their positive item
+            const scores = tf.matMul(userEmbs, itemEmbs, false, true);
+            
+            // Create labels: diagonal elements are positives
+            const labels = tf.oneHot(
+                tf.range(0, userIndices.shape[0]), 
+                itemIndices.shape[0]
+            );
+            
+            // Compute softmax cross entropy loss
+            const loss = tf.losses.softmaxCrossEntropy(labels, scores);
+            
+            // Apply gradients
+            this.optimizer.minimize(() => loss);
+            
+            return loss.dataSync()[0];
         });
     }
-    
-    // Get user embedding for a specific user
+
+    // Get user embedding for inference
     getUserEmbedding(userIndex) {
         return tf.tidy(() => {
-            const userTensor = tf.tensor1d([userIndex], 'int32');
-            return this.userEmbedding.apply(userTensor).squeeze().arraySync();
+            return this.userForward(tf.tensor1d([userIndex], 'int32'));
+        });
+    }
+
+    // Get all item embeddings for scoring
+    getItemEmbeddings() {
+        return tf.tidy(() => {
+            const allItemIndices = tf.range(0, this.numItems, 1, 'int32');
+            return this.itemForward(allItemIndices);
+        });
+    }
+
+    // Get scores for a user against all items
+    async getScoresForAllItems(userEmbedding) {
+        return tf.tidy(() => {
+            const itemEmbeddings = this.getItemEmbeddings();
+            
+            // Expand user embedding to match item dimensions for batch scoring
+            const expandedUser = userEmbedding.expandDims(1);
+            const expandedItems = itemEmbeddings.expandDims(0);
+            
+            // Compute scores using the same scoring function
+            return this.score(expandedUser, expandedItems).squeeze();
         });
     }
 }
