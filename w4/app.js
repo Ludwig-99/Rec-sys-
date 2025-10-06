@@ -1,3 +1,4 @@
+// app.js
 class MovieLensApp {
     constructor() {
         this.interactions = [];
@@ -28,11 +29,18 @@ class MovieLensApp {
         document.getElementById('train').addEventListener('click', () => this.train());
         document.getElementById('test').addEventListener('click', () => this.test());
         
-        this.updateStatus('Click "Load Data" to start');
+        this.updateStatus('Ready to load data. Click "Load Data" to begin.');
     }
     
     async loadData() {
-        this.updateStatus('Loading data...');
+        const loadBtn = document.getElementById('loadData');
+        const loadingSpinner = loadBtn.querySelector('.loading');
+        
+        loadBtn.disabled = true;
+        loadingSpinner.style.display = 'inline-block';
+        loadBtn.innerHTML = loadingSpinner.outerHTML + ' Loading...';
+        
+        this.updateStatus('📥 Loading MovieLens 100K data...');
         
         try {
             // Load interactions
@@ -72,12 +80,16 @@ class MovieLensApp {
             this.createMappings();
             this.findQualifiedUsers();
             
-            this.updateStatus(`Loaded ${this.interactions.length} interactions and ${this.items.size} items. ${this.userTopRated.size} users have 20+ ratings.`);
+            this.updateStatus(`✅ Successfully loaded ${this.interactions.length.toLocaleString()} interactions and ${this.items.size} movies. Found ${this.userTopRated.size} users with 20+ ratings.`);
             
             document.getElementById('train').disabled = false;
             
         } catch (error) {
-            this.updateStatus(`Error loading data: ${error.message}`);
+            this.updateStatus(`❌ Error loading data: ${error.message}`);
+        } finally {
+            loadBtn.disabled = false;
+            loadingSpinner.style.display = 'none';
+            loadBtn.textContent = 'Load Data';
         }
     }
     
@@ -135,7 +147,7 @@ class MovieLensApp {
         document.getElementById('train').disabled = true;
         this.lossHistory = [];
         
-        this.updateStatus('Initializing model...');
+        this.updateStatus('🔄 Initializing Two-Tower model architecture...');
         
         // Initialize model
         this.model = new TwoTowerModel(
@@ -148,7 +160,7 @@ class MovieLensApp {
         const userIndices = this.interactions.map(i => this.userMap.get(i.userId));
         const itemIndices = this.interactions.map(i => this.itemMap.get(i.itemId));
         
-        this.updateStatus('Starting training...');
+        this.updateStatus('🚀 Starting training with in-batch negative sampling...');
         
         // Training loop
         const numBatches = Math.ceil(userIndices.length / this.config.batchSize);
@@ -170,7 +182,7 @@ class MovieLensApp {
                 this.updateLossChart();
                 
                 if (batch % 10 === 0) {
-                    this.updateStatus(`Epoch ${epoch + 1}/${this.config.epochs}, Batch ${batch}/${numBatches}, Loss: ${loss.toFixed(4)}`);
+                    this.updateStatus(`📚 Epoch ${epoch + 1}/${this.config.epochs}, Batch ${batch}/${numBatches}, Loss: ${loss.toFixed(4)}`);
                 }
                 
                 // Allow UI to update
@@ -178,14 +190,14 @@ class MovieLensApp {
             }
             
             epochLoss /= numBatches;
-            this.updateStatus(`Epoch ${epoch + 1}/${this.config.epochs} completed. Average loss: ${epochLoss.toFixed(4)}`);
+            this.updateStatus(`🎉 Epoch ${epoch + 1}/${this.config.epochs} completed. Average loss: ${epochLoss.toFixed(4)}`);
         }
         
         this.isTraining = false;
         document.getElementById('train').disabled = false;
         document.getElementById('test').disabled = false;
         
-        this.updateStatus('Training completed! Click "Test" to see recommendations.');
+        this.updateStatus('🏆 Training completed! Click "Test" to generate movie recommendations.');
         
         // Visualize embeddings
         this.visualizeEmbeddings();
@@ -199,13 +211,25 @@ class MovieLensApp {
         
         if (this.lossHistory.length === 0) return;
         
+        // Create gradient background
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, 'rgba(110, 202, 220, 0.1)');
+        gradient.addColorStop(1, 'rgba(164, 215, 225, 0.05)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         const maxLoss = Math.max(...this.lossHistory);
         const minLoss = Math.min(...this.lossHistory);
         const range = maxLoss - minLoss || 1;
         
-        ctx.strokeStyle = '#007acc';
-        ctx.lineWidth = 2;
+        // Draw smoothed line
+        ctx.strokeStyle = '#6ecadc';
+        ctx.lineWidth = 3;
         ctx.beginPath();
+        
+        const smoothing = 0.1;
+        let prevX = 0;
+        let prevY = canvas.height - ((this.lossHistory[0] - minLoss) / range) * canvas.height;
         
         this.lossHistory.forEach((loss, index) => {
             const x = (index / this.lossHistory.length) * canvas.width;
@@ -214,23 +238,38 @@ class MovieLensApp {
             if (index === 0) {
                 ctx.moveTo(x, y);
             } else {
-                ctx.lineTo(x, y);
+                const cpX = (prevX + x) / 2;
+                ctx.quadraticCurveTo(prevX, prevY, cpX, (prevY + y) / 2);
             }
+            
+            prevX = x;
+            prevY = y;
         });
         
         ctx.stroke();
         
+        // Add gradient under line
+        ctx.lineTo(canvas.width, canvas.height);
+        ctx.lineTo(0, canvas.height);
+        ctx.closePath();
+        const areaGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        areaGradient.addColorStop(0, 'rgba(110, 202, 220, 0.3)');
+        areaGradient.addColorStop(1, 'rgba(110, 202, 220, 0)');
+        ctx.fillStyle = areaGradient;
+        ctx.fill();
+        
         // Add labels
-        ctx.fillStyle = '#000';
-        ctx.font = '12px Arial';
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = '12px Segoe UI';
         ctx.fillText(`Min: ${minLoss.toFixed(4)}`, 10, canvas.height - 10);
         ctx.fillText(`Max: ${maxLoss.toFixed(4)}`, 10, 20);
+        ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, canvas.width - 100, 20);
     }
     
     async visualizeEmbeddings() {
         if (!this.model) return;
         
-        this.updateStatus('Computing embedding visualization...');
+        this.updateStatus('🎨 Computing PCA projection for item embeddings...');
         
         const canvas = document.getElementById('embeddingChart');
         const ctx = canvas.getContext('2d');
@@ -262,27 +301,49 @@ class MovieLensApp {
             const xRange = xMax - xMin || 1;
             const yRange = yMax - yMin || 1;
             
-            // Draw points
-            ctx.fillStyle = 'rgba(0, 122, 204, 0.6)';
+            // Draw background gradient
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+            );
+            gradient.addColorStop(0, 'rgba(164, 215, 225, 0.1)');
+            gradient.addColorStop(1, 'rgba(110, 202, 220, 0.05)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw points with gradient colors
             sampleIndices.forEach((itemIdx, i) => {
-                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 40) + 20;
-                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 40) + 20;
+                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 60) + 30;
+                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 60) + 30;
                 
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 8);
+                gradient.addColorStop(0, 'rgba(110, 202, 220, 0.8)');
+                gradient.addColorStop(1, 'rgba(75, 181, 195, 0.4)');
+                
+                ctx.fillStyle = gradient;
                 ctx.beginPath();
-                ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
                 ctx.fill();
+                
+                // Add glow effect
+                ctx.shadowColor = 'rgba(110, 202, 220, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0;
             });
             
             // Add title and labels
-            ctx.fillStyle = '#000';
-            ctx.font = '14px Arial';
-            ctx.fillText('Item Embeddings Projection (PCA)', 10, 20);
-            ctx.font = '12px Arial';
-            ctx.fillText(`Showing ${sampleSize} items`, 10, 40);
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '16px Segoe UI';
+            ctx.fillText('Item Embeddings Projection (PCA)', 20, 30);
+            ctx.font = '12px Segoe UI';
+            ctx.fillText(`Visualizing ${sampleSize} movie embeddings in 2D space`, 20, 50);
+            ctx.fillStyle = '#7f8c8d';
+            ctx.fillText('Each point represents a movie. Similar movies should cluster together.', 20, canvas.height - 10);
             
-            this.updateStatus('Embedding visualization completed.');
+            this.updateStatus('✅ Embedding visualization completed.');
         } catch (error) {
-            this.updateStatus(`Error in visualization: ${error.message}`);
+            this.updateStatus(`❌ Error in visualization: ${error.message}`);
         }
     }
     
@@ -351,11 +412,11 @@ class MovieLensApp {
     
     async test() {
         if (!this.model || this.qualifiedUsers.length === 0) {
-            this.updateStatus('Model not trained or no qualified users found.');
+            this.updateStatus('❌ Model not trained or no qualified users found.');
             return;
         }
         
-        this.updateStatus('Generating recommendations...');
+        this.updateStatus('🔍 Generating personalized recommendations...');
         
         try {
             // Pick random qualified user
@@ -388,7 +449,7 @@ class MovieLensApp {
             this.displayResults(randomUser, userInteractions, topRecommendations);
             
         } catch (error) {
-            this.updateStatus(`Error generating recommendations: ${error.message}`);
+            this.updateStatus(`❌ Error generating recommendations: ${error.message}`);
         }
     }
     
@@ -398,15 +459,15 @@ class MovieLensApp {
         const topRated = userInteractions.slice(0, 10);
         
         let html = `
-            <h2>Recommendations for User ${userId}</h2>
+            <h2 style="color: #6ecadc; margin-bottom: 20px;">🎭 Recommendations for User ${userId}</h2>
             <div class="side-by-side">
                 <div>
-                    <h3>Top 10 Rated Movies (Historical)</h3>
+                    <h3 style="color: #4bb5c3;">⭐ Top 10 Rated Movies (Historical)</h3>
                     <table>
                         <thead>
                             <tr>
                                 <th>Rank</th>
-                                <th>Movie</th>
+                                <th>Movie Title</th>
                                 <th>Rating</th>
                                 <th>Year</th>
                             </tr>
@@ -416,11 +477,12 @@ class MovieLensApp {
         
         topRated.forEach((interaction, index) => {
             const item = this.items.get(interaction.itemId);
+            const ratingStars = '★'.repeat(Math.round(interaction.rating)) + '☆'.repeat(5 - Math.round(interaction.rating));
             html += `
                 <tr>
-                    <td>${index + 1}</td>
+                    <td><strong>${index + 1}</strong></td>
                     <td>${item.title}</td>
-                    <td>${interaction.rating}</td>
+                    <td style="color: #f39c12;">${ratingStars} (${interaction.rating})</td>
                     <td>${item.year || 'N/A'}</td>
                 </tr>
             `;
@@ -431,13 +493,13 @@ class MovieLensApp {
                     </table>
                 </div>
                 <div>
-                    <h3>Top 10 Recommended Movies</h3>
+                    <h3 style="color: #4bb5c3;">🚀 Top 10 Recommended Movies</h3>
                     <table>
                         <thead>
                             <tr>
                                 <th>Rank</th>
-                                <th>Movie</th>
-                                <th>Score</th>
+                                <th>Movie Title</th>
+                                <th>Match Score</th>
                                 <th>Year</th>
                             </tr>
                         </thead>
@@ -446,11 +508,17 @@ class MovieLensApp {
         
         recommendations.forEach((rec, index) => {
             const item = this.items.get(rec.itemId);
+            const scorePercent = Math.min(100, Math.max(0, (rec.score + 1) * 50)); // Normalize to 0-100%
             html += `
                 <tr>
-                    <td>${index + 1}</td>
+                    <td><strong>${index + 1}</strong></td>
                     <td>${item.title}</td>
-                    <td>${rec.score.toFixed(4)}</td>
+                    <td>
+                        <div style="background: #ecf0f1; border-radius: 10px; height: 8px; margin: 5px 0;">
+                            <div style="background: linear-gradient(90deg, #6ecadc, #4bb5c3); width: ${scorePercent}%; height: 100%; border-radius: 10px;"></div>
+                        </div>
+                        ${rec.score.toFixed(4)}
+                    </td>
                     <td>${item.year || 'N/A'}</td>
                 </tr>
             `;
@@ -461,10 +529,13 @@ class MovieLensApp {
                     </table>
                 </div>
             </div>
+            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #e8f4f8, #d4edf2); border-radius: 10px; border-left: 4px solid #6ecadc;">
+                <strong>💡 Insight:</strong> The model recommends movies based on learned embeddings that capture user preferences and movie characteristics through the Two-Tower architecture.
+            </div>
         `;
         
         resultsDiv.innerHTML = html;
-        this.updateStatus('Recommendations generated successfully!');
+        this.updateStatus('✅ Recommendations generated successfully!');
     }
     
     updateStatus(message) {
