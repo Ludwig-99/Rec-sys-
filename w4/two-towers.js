@@ -1,110 +1,34 @@
 // two-tower.js
-// Matrix Factorization Model (Basic - No Deep Learning)
-class BasicMFModel {
-    constructor(numUsers, numItems, embDim) {
+/**
+ * Deep Learning Two-Tower Model with MLP Architecture
+ * User Tower: MLP with embedding + hidden layers for user representation
+ * Item Tower: MLP with item embedding + genre features for item representation
+ * Uses dot product scoring for efficient retrieval
+ */
+class TwoTowerModel {
+    constructor(numUsers, numItems, numGenres, embDim) {
         this.numUsers = numUsers;
         this.numItems = numItems;
+        this.numGenres = numGenres;
         this.embDim = embDim;
         
-        // Simple embedding tables - classic matrix factorization
-        this.userEmbeddings = tf.variable(
-            tf.randomNormal([numUsers, embDim], 0, 0.01), 
-            true, 
-            'user_embeddings'
-        );
-        
-        this.itemEmbeddings = tf.variable(
-            tf.randomNormal([numItems, embDim], 0, 0.01), 
-            true, 
-            'item_embeddings'
-        );
-        
-        this.optimizer = tf.train.adam(0.001);
-    }
-    
-    // Simple embedding lookup for users
-    userForward(userIndices) {
-        return tf.gather(this.userEmbeddings, userIndices);
-    }
-    
-    // Simple embedding lookup for items  
-    itemForward(itemIndices) {
-        return tf.gather(this.itemEmbeddings, itemIndices);
-    }
-    
-    // Dot product scoring - efficient for retrieval
-    score(userEmbeddings, itemEmbeddings) {
-        return tf.sum(tf.mul(userEmbeddings, itemEmbeddings), -1);
-    }
-    
-    async trainStep(userIndices, itemIndices) {
-        return await tf.tidy(() => {
-            // In-batch negative sampling: use all items in batch as negatives
-            const loss = () => {
-                const userEmbs = this.userForward(userIndices);
-                const itemEmbs = this.itemForward(itemIndices);
-                
-                // Compute similarity matrix: batch_size x batch_size
-                const logits = tf.matMul(userEmbs, itemEmbs, false, true);
-                
-                // Labels: diagonal elements are positive pairs
-                const labels = tf.oneHot(
-                    tf.range(0, userIndices.length, 1, 'int32'), 
-                    userIndices.length
-                );
-                
-                // Softmax cross entropy encourages positive pairs to score higher than negatives
-                const loss = tf.losses.softmaxCrossEntropy(labels, logits);
-                return loss;
-            };
-            
-            const { value, grads } = this.optimizer.computeGradients(loss);
-            this.optimizer.applyGradients(grads);
-            
-            return value.dataSync()[0];
-        });
-    }
-    
-    getUserEmbedding(userIndex) {
-        return tf.tidy(() => {
-            return this.userForward([userIndex]).squeeze().arraySync();
-        });
-    }
-    
-    async getScoresForAllItems(userEmbedding) {
-        return await tf.tidy(() => {
-            const userEmbTensor = tf.tensor1d(userEmbedding);
-            const scores = tf.dot(this.itemEmbeddings, userEmbTensor);
-            return scores.dataSync();
-        });
-    }
-    
-    getItemEmbeddings() {
-        return this.itemEmbeddings.arraySync();
-    }
-}
-
-// Deep Learning Two-Tower Model with MLP
-class TwoTowerDLModel {
-    constructor(numUsers, numItems, embDim, hiddenDim = 64) {
-        this.numUsers = numUsers;
-        this.numItems = numItems;
-        this.embDim = embDim;
-        this.hiddenDim = hiddenDim;
-        
-        // User Tower: MLP with one hidden layer
+        // User Tower: MLP architecture for learning user representations
+        // Embedding layer captures user IDs, MLP layers learn non-linear patterns
         this.userTower = tf.sequential({
             layers: [
+                // User embedding layer: maps user IDs to dense vectors
                 tf.layers.embedding({
                     inputDim: numUsers,
                     outputDim: embDim,
                     name: 'user_embedding'
                 }),
+                // First hidden layer: learns non-linear user feature interactions
                 tf.layers.dense({
-                    units: hiddenDim,
+                    units: 64,
                     activation: 'relu',
-                    name: 'user_hidden'
+                    name: 'user_hidden1'
                 }),
+                // Output layer: produces final user representation in shared space
                 tf.layers.dense({
                     units: embDim,
                     activation: 'linear',
@@ -113,19 +37,24 @@ class TwoTowerDLModel {
             ]
         });
         
-        // Item Tower: MLP with one hidden layer
+        // Item Tower: MLP architecture with genre features for item representation
+        // Combines item ID embeddings with genre information for richer representations
         this.itemTower = tf.sequential({
             layers: [
+                // Item embedding layer: maps item IDs to initial dense vectors
                 tf.layers.embedding({
                     inputDim: numItems,
                     outputDim: embDim,
                     name: 'item_embedding'
                 }),
+                // Genre embedding layer: adds genre features as additional context
+                // Genre embeddings are concatenated with item embeddings
                 tf.layers.dense({
-                    units: hiddenDim,
+                    units: embDim + 16, // Extra capacity for genre information
                     activation: 'relu',
-                    name: 'item_hidden'
+                    name: 'item_hidden1'
                 }),
+                // Output layer: produces final item representation in shared space
                 tf.layers.dense({
                     units: embDim,
                     activation: 'linear',
@@ -134,10 +63,22 @@ class TwoTowerDLModel {
             ]
         });
         
+        // Genre embedding layer for item features
+        this.genreEmbedding = tf.layers.embedding({
+            inputDim: numGenres,
+            outputDim: 16, // Compact genre representations
+            name: 'genre_embedding'
+        });
+        
+        // Adam optimizer for stable training with MLP layers
         this.optimizer = tf.train.adam(0.001);
     }
     
-    // User tower forward pass through MLP
+    /**
+     * User Tower Forward Pass
+     * Processes user indices through MLP to get user embeddings
+     * MLP allows learning complex user preference patterns
+     */
     userForward(userIndices) {
         return tf.tidy(() => {
             const userTensor = tf.tensor1d(userIndices, 'int32');
@@ -145,37 +86,71 @@ class TwoTowerDLModel {
         });
     }
     
-    // Item tower forward pass through MLP
-    itemForward(itemIndices) {
+    /**
+     * Item Tower Forward Pass with Genre Features
+     * Processes item indices and genre information through MLP
+     * Genre features provide additional semantic context for items
+     */
+    itemForward(itemIndices, genreIndices) {
         return tf.tidy(() => {
             const itemTensor = tf.tensor1d(itemIndices, 'int32');
-            return this.itemTower.apply(itemTensor);
+            const genreTensor = tf.tensor1d(genreIndices, 'int32');
+            
+            // Get base item embeddings
+            const itemEmbs = this.itemTower.layers[0].apply(itemTensor);
+            
+            // Get genre embeddings and concatenate with item embeddings
+            const genreEmbs = this.genreEmbedding.apply(genreTensor);
+            const combined = tf.concat([itemEmbs, genreEmbs], -1);
+            
+            // Pass through remaining MLP layers
+            let output = combined;
+            for (let i = 1; i < this.itemTower.layers.length; i++) {
+                output = this.itemTower.layers[i].apply(output);
+            }
+            
+            return output;
         });
     }
     
-    // Dot product scoring between user and item embeddings
+    /**
+     * Scoring Function: Dot Product Similarity
+     * Efficient computation of user-item affinity in shared latent space
+     * Dot product is computationally efficient and well-suited for retrieval
+     */
     score(userEmbeddings, itemEmbeddings) {
         return tf.sum(tf.mul(userEmbeddings, itemEmbeddings), -1);
     }
     
-    async trainStep(userIndices, itemIndices) {
+    /**
+     * Training Step with In-Batch Negative Sampling
+     * Uses all items in batch as negatives for each user
+     * Diagonal elements are positive pairs, off-diagonals are negatives
+     * This is efficient and provides good gradient signal
+     */
+    async trainStep(userIndices, itemIndices, genreIndices) {
         return await tf.tidy(() => {
             const loss = () => {
                 const userEmbs = this.userForward(userIndices);
-                const itemEmbs = this.itemForward(itemIndices);
+                const itemEmbs = this.itemForward(itemIndices, genreIndices);
                 
-                // In-batch negative sampling with deep representations
+                // Compute similarity matrix: each user scored against all items in batch
+                // This creates in-batch negatives automatically
                 const logits = tf.matMul(userEmbs, itemEmbs, false, true);
                 
+                // Labels: diagonal elements are positive user-item pairs
                 const labels = tf.oneHot(
                     tf.range(0, userIndices.length, 1, 'int32'), 
                     userIndices.length
                 );
                 
+                // Softmax cross entropy loss encourages positive pairs to have higher scores
+                // than negative pairs, learning meaningful user-item affinities
                 const loss = tf.losses.softmaxCrossEntropy(labels, logits);
                 return loss;
             };
             
+            // Compute gradients and update all MLP layers and embeddings
             const { value, grads } = this.optimizer.computeGradients(loss);
             this.optimizer.applyGradients(grads);
             
@@ -183,166 +158,44 @@ class TwoTowerDLModel {
         });
     }
     
+    /**
+     * Get User Embedding for Inference
+     * Forward pass through user MLP tower for a specific user
+     */
     getUserEmbedding(userIndex) {
         return tf.tidy(() => {
             return this.userForward([userIndex]).squeeze().arraySync();
         });
     }
     
+    /**
+     * Score All Items for a User
+     * Efficient batched computation of user-item affinities
+     * Uses matrix multiplication for scalability
+     */
     async getScoresForAllItems(userEmbedding) {
         return await tf.tidy(() => {
-            // Get all item embeddings through the item tower
+            // Generate embeddings for all items (with default genre 0)
             const allItemIndices = Array.from({length: this.numItems}, (_, i) => i);
-            const itemTensor = tf.tensor1d(allItemIndices, 'int32');
-            const itemEmbs = this.itemTower.apply(itemTensor);
+            const allGenreIndices = Array(this.numItems).fill(0);
+            const itemEmbs = this.itemForward(allItemIndices, allGenreIndices);
             
+            // Compute dot products with user embedding
             const userEmbTensor = tf.tensor2d([userEmbedding]);
             const scores = tf.matMul(userEmbTensor, itemEmbs, false, true);
             return scores.dataSync();
         });
     }
     
+    /**
+     * Get Item Embeddings for Visualization
+     * Returns all item embeddings through the item tower
+     */
     getItemEmbeddings() {
         return tf.tidy(() => {
             const allItemIndices = Array.from({length: this.numItems}, (_, i) => i);
-            const itemTensor = tf.tensor1d(allItemIndices, 'int32');
-            return this.itemTower.apply(itemTensor).arraySync();
-        });
-    }
-}
-
-// Genre-Enhanced Model using genre features
-class GenreEnhancedModel {
-    constructor(numUsers, numGenres, embDim, hiddenDim = 64) {
-        this.numUsers = numUsers;
-        this.numGenres = numGenres;
-        this.embDim = embDim;
-        this.hiddenDim = hiddenDim;
-        
-        // User Tower: MLP architecture
-        this.userTower = tf.sequential({
-            layers: [
-                tf.layers.embedding({
-                    inputDim: numUsers,
-                    outputDim: embDim,
-                    name: 'user_embedding'
-                }),
-                tf.layers.dense({
-                    units: hiddenDim,
-                    activation: 'relu',
-                    name: 'user_hidden'
-                }),
-                tf.layers.dense({
-                    units: embDim,
-                    activation: 'linear',
-                    name: 'user_output'
-                })
-            ]
-        });
-        
-        // Item Tower: Uses genre embeddings instead of item IDs
-        this.itemTower = tf.sequential({
-            layers: [
-                tf.layers.embedding({
-                    inputDim: numGenres,
-                    outputDim: hiddenDim,
-                    name: 'genre_embedding'
-                }),
-                tf.layers.dense({
-                    units: hiddenDim,
-                    activation: 'relu',
-                    name: 'item_hidden'
-                }),
-                tf.layers.dense({
-                    units: embDim,
-                    activation: 'linear',
-                    name: 'item_output'
-                })
-            ]
-        });
-        
-        this.optimizer = tf.train.adam(0.001);
-    }
-    
-    // User tower forward pass
-    userForward(userIndices) {
-        return tf.tidy(() => {
-            const userTensor = tf.tensor1d(userIndices, 'int32');
-            return this.userTower.apply(userTensor);
-        });
-    }
-    
-    // Item tower forward pass with genre features
-    itemForward(genreIndices) {
-        return tf.tidy(() => {
-            const genreTensor = tf.tensor1d(genreIndices, 'int32');
-            return this.itemTower.apply(genreTensor);
-        });
-    }
-    
-    // Dot product scoring
-    score(userEmbeddings, itemEmbeddings) {
-        return tf.sum(tf.mul(userEmbeddings, itemEmbeddings), -1);
-    }
-    
-    async trainStep(userIndices, genreIndices) {
-        return await tf.tidy(() => {
-            const loss = () => {
-                const userEmbs = this.userForward(userIndices);
-                const itemEmbs = this.itemForward(genreIndices);
-                
-                // In-batch negative sampling with genre-based items
-                const logits = tf.matMul(userEmbs, itemEmbs, false, true);
-                
-                const labels = tf.oneHot(
-                    tf.range(0, userIndices.length, 1, 'int32'), 
-                    userIndices.length
-                );
-                
-                const loss = tf.losses.softmaxCrossEntropy(labels, logits);
-                return loss;
-            };
-            
-            const { value, grads } = this.optimizer.computeGradients(loss);
-            this.optimizer.applyGradients(grads);
-            
-            return value.dataSync()[0];
-        });
-    }
-    
-    getUserEmbedding(userIndex) {
-        return tf.tidy(() => {
-            return this.userForward([userIndex]).squeeze().arraySync();
-        });
-    }
-    
-    async getPredictionsForUser(userIndex, allGenres) {
-        return await tf.tidy(() => {
-            const userIndices = Array(allGenres.length).fill(userIndex);
-            const userEmbs = this.userForward(userIndices);
-            const itemEmbs = this.itemForward(allGenres);
-            
-            // Compute scores for all genres
-            const scores = this.score(userEmbs, itemEmbs).dataSync();
-            
-            // Combine genres with their scores
-            const genreScores = allGenres.map((genreId, index) => ({
-                genreId: genreId,
-                score: scores[index]
-            }));
-            
-            // Sort by score descending
-            genreScores.sort((a, b) => b.score - a.score);
-            
-            return genreScores;
-        });
-    }
-    
-    getGenreEmbeddings() {
-        return tf.tidy(() => {
-            const allGenreIndices = Array.from({length: this.numGenres}, (_, i) => i);
-            const genreTensor = tf.tensor1d(allGenreIndices, 'int32');
-            return this.itemTower.apply(genreTensor).arraySync();
+            const allGenreIndices = Array(this.numItems).fill(0);
+            return this.itemForward(allItemIndices, allGenreIndices).arraySync();
         });
     }
 }
