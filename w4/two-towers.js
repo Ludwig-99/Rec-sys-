@@ -1,75 +1,100 @@
 // two-tower.js
 class TwoTowerModel {
-    constructor(numUsers, numItems, embeddingDim) {
+    constructor(numUsers, numItems, numGenres, embDim, hiddenDim = 64) {
         this.numUsers = numUsers;
         this.numItems = numItems;
-        this.embeddingDim = embeddingDim;
+        this.numGenres = numGenres;
+        this.embDim = embDim;
+        this.hiddenDim = hiddenDim;
         
-        // Initialize embedding tables with small random values
-        // Two-tower architecture: separate user and item embeddings
-        this.userEmbeddings = tf.variable(
-            tf.randomNormal([numUsers, embeddingDim], 0, 0.05), 
-            true, 
-            'user_embeddings'
-        );
+        // Build user tower
+        this.userTower = tf.sequential({
+            layers: [
+                tf.layers.embedding({
+                    inputDim: numUsers,
+                    outputDim: embDim,
+                    name: 'user_embedding'
+                }),
+                tf.layers.dense({
+                    units: hiddenDim,
+                    activation: 'relu',
+                    name: 'user_hidden'
+                }),
+                tf.layers.dense({
+                    units: embDim,
+                    activation: 'linear',
+                    name: 'user_output'
+                })
+            ]
+        });
         
-        this.itemEmbeddings = tf.variable(
-            tf.randomNormal([numItems, embeddingDim], 0, 0.05), 
-            true, 
-            'item_embeddings'
-        );
+        // Build item tower (genre-based)
+        this.itemTower = tf.sequential({
+            layers: [
+                tf.layers.embedding({
+                    inputDim: numGenres,
+                    outputDim: hiddenDim,
+                    name: 'genre_embedding'
+                }),
+                tf.layers.dense({
+                    units: embDim,
+                    activation: 'linear',
+                    name: 'item_output'
+                })
+            ]
+        });
         
-        // Adam optimizer for stable training
+        // Adam optimizer
         this.optimizer = tf.train.adam(0.001);
+        
+        // Store genre embeddings for inference
+        this.genreEmbeddings = this.itemTower.layers[0];
     }
     
-    // User tower: simple embedding lookup
+    // User tower forward pass
     userForward(userIndices) {
-        return tf.gather(this.userEmbeddings, userIndices);
+        return tf.tidy(() => {
+            const userTensor = tf.tensor1d(userIndices, 'int32');
+            return this.userTower.apply(userTensor);
+        });
     }
     
-    // Item tower: simple embedding lookup  
-    itemForward(itemIndices) {
-        return tf.gather(this.itemEmbeddings, itemIndices);
+    // Item tower forward pass (genre-based)
+    itemForward(genreIndices) {
+        return tf.tidy(() => {
+            const genreTensor = tf.tensor1d(genreIndices, 'int32');
+            return this.itemTower.apply(genreTensor);
+        });
     }
     
     // Scoring function: dot product between user and item embeddings
-    // Dot product is efficient and commonly used in retrieval systems
     score(userEmbeddings, itemEmbeddings) {
         return tf.sum(tf.mul(userEmbeddings, itemEmbeddings), -1);
     }
     
-    async trainStep(userIndices, itemIndices) {
+    async trainStep(userIndices, genreIndices) {
         return await tf.tidy(() => {
-            const userTensor = tf.tensor1d(userIndices, 'int32');
-            const itemTensor = tf.tensor1d(itemIndices, 'int32');
-            
-            // In-batch sampled softmax loss:
-            // Use all items in batch as negatives for each user
-            // Diagonal elements are positive pairs
+            // In-batch sampled softmax loss
             const loss = () => {
-                const userEmbs = this.userForward(userTensor);
-                const itemEmbs = this.itemForward(itemTensor);
+                const userEmbs = this.userForward(userIndices);
+                const itemEmbs = this.itemForward(genreIndices);
                 
                 // Compute similarity matrix: batch_size x batch_size
                 const logits = tf.matMul(userEmbs, itemEmbs, false, true);
                 
                 // Labels: diagonal elements are positives
-                // Use int32 tensor for oneHot indices
                 const labels = tf.oneHot(
                     tf.range(0, userIndices.length, 1, 'int32'), 
                     userIndices.length
                 );
                 
                 // Softmax cross entropy loss
-                // This encourages positive pairs to have higher scores than negatives
                 const loss = tf.losses.softmaxCrossEntropy(labels, logits);
                 return loss;
             };
             
-            // Compute gradients and update embeddings
+            // Compute gradients and update both towers
             const { value, grads } = this.optimizer.computeGradients(loss);
-            
             this.optimizer.applyGradients(grads);
             
             return value.dataSync()[0];
@@ -82,16 +107,24 @@ class TwoTowerModel {
         });
     }
     
-    async getScoresForAllItems(userEmbedding) {
+    async getItemEmbeddings() {
         return await tf.tidy(() => {
-            // Compute dot product with all item embeddings
-            const scores = tf.dot(this.itemEmbeddings, userEmbedding);
-            return scores.dataSync();
+            // Generate embeddings for all genres
+            const allGenreIndices = Array.from({length: this.numGenres}, (_, i) => i);
+            const genreTensor = tf.tensor1d(allGenreIndices, 'int32');
+            const embeddings = this.itemTower.apply(genreTensor);
+            return embeddings.arraySync();
         });
     }
     
-    getItemEmbeddings() {
-        // Return the tensor directly - call arraySync() on the tensor, not this method
-        return this.itemEmbeddings;
+    async getScoresForAllItems(userEmbedding, itemEmbeddings) {
+        return await tf.tidy(() => {
+            const userEmbTensor = tf.tensor2d([userEmbedding]);
+            const itemEmbTensor = tf.tensor2d(itemEmbeddings);
+            
+            // Compute dot products with all item embeddings
+            const scores = tf.matMul(userEmbTensor, itemEmbTensor, false, true);
+            return scores.dataSync();
+        });
     }
 }
