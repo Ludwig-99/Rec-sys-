@@ -573,4 +573,131 @@ class MovieLensApp {
         
         basicRecs.forEach((rec, index) => {
             const genreText = rec.item.genres.slice(0, 2).join(', ');
-            const scorePercent
+            const scorePercent = Math.min(100, Math.round(rec.score * 25));
+            html += `
+                <tr>
+                    <td>${rec.item.title}</td>
+                    <td><span class="score">${scorePercent}%</span></td>
+                    <td style="font-size: 0.85em; color: #7f8c8d;">${genreText}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="model-section">
+                    <h3>Deep Learning <span class="model-badge dl-badge">DL</span></h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Movie</th>
+                                <th>Score</th>
+                                <th>Genres</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        dlRecs.forEach((rec, index) => {
+            const genreText = rec.item.genres.slice(0, 2).join(', ');
+            const scorePercent = Math.min(100, Math.round(rec.score * 25));
+            html += `
+                <tr>
+                    <td>${rec.item.title}</td>
+                    <td><span class="score">${scorePercent}%</span></td>
+                    <td style="font-size: 0.85em; color: #7f8c8d;">${genreText}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="model-section">
+                    <h3>Genre-Enhanced <span class="model-badge genre-badge">Genre</span></h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Movie</th>
+                                <th>Score</th>
+                                <th>Genres</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        genreRecs.forEach((rec, index) => {
+            const genreText = rec.item.genres.slice(0, 2).join(', ');
+            const scorePercent = Math.min(100, Math.round(rec.score * 100));
+            html += `
+                <tr>
+                    <td>${rec.item.title}</td>
+                    <td><span class="score">${scorePercent}%</span></td>
+                    <td style="font-size: 0.85em; color: #7f8c8d;">${genreText}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f8fdff 0%, #f0faff 100%); border-radius: 12px; border: 1px solid var(--border);">
+                <h3 style="color: var(--primary); margin-bottom: 15px;">User's Top Rated Movies</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Movie Title</th>
+                            <th>Rating</th>
+                            <th>Genres</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        topRated.forEach((interaction, index) => {
+            const item = this.items.get(interaction.itemId);
+            const stars = '★'.repeat(Math.round(interaction.rating)) + '☆'.repeat(5 - Math.round(interaction.rating));
+            const genreText = item.genres.slice(0, 2).join(', ');
+            html += `
+                <tr>
+                    <td><strong>#${index + 1}</strong></td>
+                    <td>${item.title}</td>
+                    <td><span class="stars">${stars}</span></td>
+                    <td style="font-size: 0.9em; color: #7f8c8d;">${genreText}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        resultsDiv.innerHTML = html;
+        this.updateStatus('✅ Model comparison completed successfully!');
+    }
+    
+    updateStatus(message) {
+        document.getElementById('status').textContent = message;
+    }
+    
+    updateProgress(percent) {
+        document.getElementById('loadingProgress').style.width = percent + '%';
+    }
+}
+
+// Initialize app when page loads
+let app;
+document.addEventListener('DOMContentLoaded', () => {
+    app = new MovieLensApp();
+});
