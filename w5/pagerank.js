@@ -7,12 +7,22 @@
  * @returns {Promise<Object>} Object mapping node IDs to PageRank scores
  */
 async function computePageRank(adjacencyList, iterations = 50, dampingFactor = 0.85) {
+    console.log('🧮 Starting PageRank computation...');
+    
+    // Проверяем что TensorFlow.js доступен
+    if (typeof tf === 'undefined') {
+        throw new Error('TensorFlow.js is not available');
+    }
+
     const nodeIds = Object.keys(adjacencyList).map(Number).sort((a, b) => a - b);
     const n = nodeIds.length;
     
     if (n === 0) {
+        console.warn('⚠️ No nodes in graph');
         return {};
     }
+    
+    console.log(`📊 Computing PageRank for ${n} nodes, ${iterations} iterations`);
     
     // Create node ID to index mapping
     const nodeToIndex = {};
@@ -55,6 +65,8 @@ async function computePageRank(adjacencyList, iterations = 50, dampingFactor = 0
         // Initialize PageRank vector (uniform distribution)
         let pr_vector = tf.ones([n, 1]).div(tf.scalar(n));
 
+        console.log('🔄 Running power iterations...');
+
         // Power iteration
         for (let iter = 0; iter < iterations; iter++) {
             const term1 = M_tensor.matMul(pr_vector).mul(damping_tensor);
@@ -75,10 +87,13 @@ async function computePageRank(adjacencyList, iterations = 50, dampingFactor = 0
             result[id] = scores[index][0];
         });
 
+        console.log('✅ PageRank computation completed');
         return result;
         
     } catch (error) {
-        console.error('TensorFlow.js error:', error);
+        console.error('❌ TensorFlow.js error:', error);
         throw error;
     }
 }
+
+console.log('📦 PageRank module loaded');
