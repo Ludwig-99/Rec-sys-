@@ -1,275 +1,290 @@
 // app.js
-class FriendRecommenderApp {
+class PageRankApp {
     constructor() {
-        this.graph = { nodes: [], edges: [] };
-        this.pagerankScores = [];
-        this.currentSelectedNode = null;
-        this.svg = null;
-        this.colorScale = null;
-        this.radiusScale = null;
+        this.graph = null;
+        this.pageRankScores = null;
+        this.selectedNode = null;
+        this.isComputing = false;
         
-        this.init();
+        this.initializeEventListeners();
+        this.loadDefaultData();
     }
 
-    async init() {
-        try {
-            await this.loadData('data/karate.csv');
-            this.pagerankScores = await computePageRank(this.graph);
-            this.updateTable();
-            this.renderGraph();
-            this.setupEventListeners();
-        } catch (error) {
-            console.error('Error initializing app:', error);
-        }
+    initializeEventListeners() {
+        document.getElementById('computeBtn').addEventListener('click', () => this.computePageRank());
+        document.getElementById('resetBtn').addEventListener('click', () => this.resetGraph());
     }
 
-    async loadData(filePath) {
+    async loadDefaultData() {
         try {
-            const data = await d3.csv(filePath);
-            this.graph.edges = data.map(d => ({
-                source: +d.source,
-                target: +d.target
-            }));
-
-            // Extract unique nodes
-            const nodeSet = new Set();
-            this.graph.edges.forEach(edge => {
-                nodeSet.add(edge.source);
-                nodeSet.add(edge.target);
-            });
-
-            this.graph.nodes = Array.from(nodeSet).map(id => ({ id }));
+            // Load the karate club dataset
+            const response = await fetch('data/karate.csv');
+            if (!response.ok) throw new Error('Failed to load data file');
             
-            console.log(`Loaded ${this.graph.nodes.length} nodes and ${this.graph.edges.length} edges`);
+            const csvText = await response.text();
+            this.graph = this.parseCSVToGraph(csvText);
+            
+            // Initialize graph renderer if available
+            if (window.graphRenderer) {
+                window.graphRenderer.renderGraph(this.graph);
+            }
+            
+            this.updateTable();
         } catch (error) {
             console.error('Error loading data:', error);
-            throw error;
+            this.showError('Error loading graph data. Please check if data/karate.csv exists.');
         }
+    }
+
+    parseCSVToGraph(csvText) {
+        const edges = [];
+        const nodes = new Set();
+        
+        const lines = csvText.trim().split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            
+            const parts = line.split(',');
+            if (parts.length < 2) continue;
+            
+            const source = parseInt(parts[0].trim());
+            const target = parseInt(parts[1].trim());
+            
+            if (isNaN(source) || isNaN(target)) continue;
+            
+            edges.push({ source, target });
+            nodes.add(source);
+            nodes.add(target);
+        }
+
+        // Create adjacency list
+        const adjacencyList = {};
+        Array.from(nodes).sort((a, b) => a - b).forEach(node => {
+            adjacencyList[node] = [];
+        });
+
+        edges.forEach(edge => {
+            if (!adjacencyList[edge.source].includes(edge.target)) {
+                adjacencyList[edge.source].push(edge.target);
+            }
+            if (!adjacencyList[edge.target].includes(edge.source)) {
+                adjacencyList[edge.target].push(edge.source);
+            }
+        });
+
+        return {
+            nodes: Array.from(nodes).sort((a, b) => a - b).map(id => ({ id })),
+            edges: edges,
+            adjacencyList: adjacencyList
+        };
+    }
+
+    async computePageRank() {
+        if (this.isComputing || !this.graph) return;
+        
+        this.isComputing = true;
+        const computeBtn = document.getElementById('computeBtn');
+        computeBtn.disabled = true;
+        computeBtn.textContent = 'Computing...';
+
+        try {
+            this.pageRankScores = await computePageRank(this.graph.adjacencyList, 50, 0.85);
+            this.updateTable();
+            
+            // Update graph visualization with new scores
+            if (window.graphRenderer) {
+                window.graphRenderer.updatePageRankScores(this.pageRankScores);
+            }
+            
+            // Refresh node details if a node is selected
+            if (this.selectedNode !== null) {
+                this.showNodeDetails(this.selectedNode);
+            }
+        } catch (error) {
+            console.error('Error computing PageRank:', error);
+            this.showError('Error computing PageRank scores. Check console for details.');
+        } finally {
+            this.isComputing = false;
+            computeBtn.disabled = false;
+            computeBtn.textContent = 'Compute PageRank';
+        }
+    }
+
+    resetGraph() {
+        this.pageRankScores = null;
+        this.selectedNode = null;
+        
+        // Clear selections
+        document.querySelectorAll('#tableBody tr').forEach(row => {
+            row.classList.remove('selected');
+        });
+        
+        document.getElementById('nodeDetails').innerHTML = `
+            <div class="node-info">
+                <p>Select a node from the graph or table to view details</p>
+            </div>
+        `;
+        
+        this.loadDefaultData();
     }
 
     updateTable() {
-        const tbody = d3.select('#nodes-table tbody');
-        tbody.selectAll('*').remove();
+        const tableBody = document.getElementById('tableBody');
+        tableBody.innerHTML = '';
 
-        // Sort nodes by PageRank score (descending)
-        const sortedNodes = this.graph.nodes.map(node => ({
+        if (!this.graph) return;
+
+        // Create array of nodes with their scores and sort by PageRank (descending)
+        const nodesWithScores = this.graph.nodes.map(node => ({
             ...node,
-            pagerank: this.pagerankScores[node.id] || 0
-        })).sort((a, b) => b.pagerank - a.pagerank);
+            score: this.pageRankScores ? this.pageRankScores[node.id] || 0 : 0,
+            friends: this.graph.adjacencyList[node.id] || []
+        }));
 
-        const rows = tbody.selectAll('tr')
-            .data(sortedNodes)
-            .enter()
-            .append('tr')
-            .on('click', (event, d) => this.handleNodeClick(d.id));
+        // Sort by PageRank score (descending)
+        nodesWithScores.sort((a, b) => b.score - a.score);
 
-        rows.append('td').text(d => d.id);
-        rows.append('td').text(d => this.pagerankScores[d.id]?.toFixed(4) || '0.0000');
-        rows.append('td').text(d => this.getCurrentFriends(d.id).join(', '));
+        nodesWithScores.forEach(nodeData => {
+            const row = document.createElement('tr');
+            row.dataset.nodeId = nodeData.id;
+            
+            const pageRank = this.pageRankScores ? 
+                nodeData.score.toFixed(4) : 'N/A';
+            
+            row.innerHTML = `
+                <td>${nodeData.id}</td>
+                <td>${pageRank}</td>
+                <td>${nodeData.friends.join(', ')}</td>
+            `;
+            
+            row.addEventListener('click', () => this.selectNode(nodeData.id));
+            
+            if (this.selectedNode === nodeData.id) {
+                row.classList.add('selected');
+            }
+            
+            tableBody.appendChild(row);
+        });
     }
 
-    getCurrentFriends(nodeId) {
-        return this.graph.edges
-            .filter(edge => edge.source === nodeId || edge.target === nodeId)
-            .map(edge => edge.source === nodeId ? edge.target : edge.source)
-            .sort((a, b) => a - b);
-    }
-
-    handleNodeClick(nodeId) {
-        this.currentSelectedNode = nodeId;
+    selectNode(nodeId) {
+        this.selectedNode = nodeId;
         
         // Update table selection
-        d3.selectAll('#nodes-table tr').classed('selected', false);
-        d3.selectAll('#nodes-table tr').filter(d => d.id === nodeId).classed('selected', true);
-
-        // Update graph highlighting
-        this.updateGraphHighlighting(nodeId);
-
-        // Show recommendations
-        this.showRecommendations(nodeId);
-    }
-
-    updateGraphHighlighting(selectedNodeId) {
-        if (!this.svg) return;
-
-        this.svg.selectAll('.node')
-            .classed('selected', d => d.id === selectedNodeId)
-            .attr('r', d => d.id === selectedNodeId ? 
-                this.radiusScale(this.pagerankScores[d.id]) * 1.5 : 
-                this.radiusScale(this.pagerankScores[d.id]));
-
-        this.svg.selectAll('.link')
-            .classed('highlighted', d => 
-                d.source.id === selectedNodeId || d.target.id === selectedNodeId)
-            .attr('stroke-width', d => 
-                (d.source.id === selectedNodeId || d.target.id === selectedNodeId) ? 3 : 1);
-    }
-
-    showRecommendations(nodeId) {
-        const currentFriends = this.getCurrentFriends(nodeId);
-        const allNodes = this.graph.nodes.map(node => node.id);
+        document.querySelectorAll('#tableBody tr').forEach(row => {
+            const rowNodeId = parseInt(row.dataset.nodeId);
+            row.classList.toggle('selected', rowNodeId === nodeId);
+        });
         
-        // Get potential friends (not current friends and not self)
-        const potentialFriends = allNodes.filter(id => 
-            id !== nodeId && !currentFriends.includes(id)
-        );
-
-        // Sort by PageRank score (descending) and take top 3
-        const recommendations = potentialFriends
-            .map(id => ({
-                id,
-                score: this.pagerankScores[id] || 0,
-                currentFriends: this.getCurrentFriends(id).length
-            }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3);
-
-        const recommendationDiv = d3.select('#recommendations');
-        const listDiv = d3.select('#recommendation-list');
-
-        if (recommendations.length > 0) {
-            listDiv.html(`
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                    ${recommendations.map(rec => `
-                        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
-                            <strong>User ${rec.id}</strong><br>
-                            Score: ${rec.score.toFixed(4)}<br>
-                            Friends: ${rec.currentFriends}
-                            <button onclick="app.simulateConnection(${nodeId}, ${rec.id})">
-                                Connect 🤝
-                            </button>
-                        </div>
-                    `).join('')}
-                </div>
-            `);
-            recommendationDiv.style('display', 'block');
-        } else {
-            recommendationDiv.style('display', 'none');
+        // Update graph selection
+        if (window.graphRenderer) {
+            window.graphRenderer.highlightNode(nodeId);
         }
-
-        // Update selected node info
-        d3.select('#selected-node-info').html(`
-            <p><strong>Selected User: ${nodeId}</strong></p>
-            <p>PageRank Score: ${(this.pagerankScores[nodeId] || 0).toFixed(4)}</p>
-            <p>Current Friends: ${currentFriends.join(', ') || 'None'}</p>
-        `);
+        
+        this.showNodeDetails(nodeId);
     }
 
-    simulateConnection(sourceId, targetId) {
-        // Add new edge
+    showNodeDetails(nodeId) {
+        const nodeDetails = document.getElementById('nodeDetails');
+        const friends = this.graph.adjacencyList[nodeId] || [];
+        
+        let recommendationsHtml = '';
+        if (this.pageRankScores) {
+            const recommendations = this.getRecommendations(nodeId);
+            if (recommendations.length > 0) {
+                recommendationsHtml = `
+                    <div class="recommendations">
+                        <h4>🌟 Top 3 Friend Recommendations:</h4>
+                        ${recommendations.map(rec => `
+                            <div class="recommendation-item">
+                                <div>
+                                    <strong>User ${rec.node}</strong><br>
+                                    PageRank: ${rec.score.toFixed(4)}<br>
+                                    Current Friends: ${rec.currentFriends}
+                                </div>
+                                <button onclick="app.connectNodes(${nodeId}, ${rec.node})">
+                                    Connect 🤝
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                recommendationsHtml = '<p>No new friend recommendations available.</p>';
+            }
+        } else {
+            recommendationsHtml = '<p>Compute PageRank to see recommendations.</p>';
+        }
+        
+        nodeDetails.innerHTML = `
+            <div class="node-info">
+                <h4>👤 User ${nodeId}</h4>
+                <p><strong>PageRank Score:</strong> ${this.pageRankScores ? this.pageRankScores[nodeId].toFixed(4) : 'N/A'}</p>
+                <p><strong>Current Friends (${friends.length}):</strong> ${friends.length > 0 ? friends.join(', ') : 'None'}</p>
+            </div>
+            ${recommendationsHtml}
+        `;
+    }
+
+    getRecommendations(nodeId) {
+        if (!this.pageRankScores || !this.graph) return [];
+        
+        const currentFriends = new Set(this.graph.adjacencyList[nodeId] || []);
+        currentFriends.add(nodeId); // Exclude self
+        
+        const recommendations = [];
+        
+        this.graph.nodes.forEach(node => {
+            if (!currentFriends.has(node.id)) {
+                recommendations.push({
+                    node: node.id,
+                    score: this.pageRankScores[node.id],
+                    currentFriends: (this.graph.adjacencyList[node.id] || []).length
+                });
+            }
+        });
+        
+        // Sort by PageRank score descending and take top 3
+        return recommendations.sort((a, b) => b.score - a.score).slice(0, 3);
+    }
+
+    connectNodes(sourceId, targetId) {
+        if (!this.graph) return;
+        
+        // Add edge to graph
         this.graph.edges.push({ source: sourceId, target: targetId });
         
+        // Update adjacency list
+        if (!this.graph.adjacencyList[sourceId].includes(targetId)) {
+            this.graph.adjacencyList[sourceId].push(targetId);
+            this.graph.adjacencyList[sourceId].sort((a, b) => a - b);
+        }
+        if (!this.graph.adjacencyList[targetId].includes(sourceId)) {
+            this.graph.adjacencyList[targetId].push(sourceId);
+            this.graph.adjacencyList[targetId].sort((a, b) => a - b);
+        }
+        
         // Recompute PageRank
-        computePageRank(this.graph).then(newScores => {
-            this.pagerankScores = newScores;
-            this.updateTable();
-            this.renderGraph();
-            this.showRecommendations(this.currentSelectedNode);
-            
-            console.log(`Simulated connection between ${sourceId} and ${targetId}`);
-        });
+        this.computePageRank();
+        
+        // Show success message
+        this.showSuccess(`Connected user ${sourceId} with user ${targetId}! PageRank recomputed.`);
     }
 
-    renderGraph() {
-        const container = d3.select('#graph-container');
-        container.select('svg').selectAll('*').remove();
-
-        const width = container.node().getBoundingClientRect().width;
-        const height = 500;
-
-        this.svg = container.select('svg')
-            .attr('width', width)
-            .attr('height', height);
-
-        // Create scales
-        const scores = this.graph.nodes.map(node => this.pagerankScores[node.id] || 0);
-        this.colorScale = d3.scaleSequential(d3.interpolatePlasma)
-            .domain([0, d3.max(scores)]);
-        this.radiusScale = d3.scaleSqrt()
-            .domain([0, d3.max(scores)])
-            .range([5, 20]);
-
-        // Create force simulation
-        const simulation = d3.forceSimulation(this.graph.nodes)
-            .force('link', d3.forceLink(this.graph.edges).id(d => d.id).distance(100))
-            .force('charge', d3.forceManyBody().strength(-300))
-            .force('center', d3.forceCenter(width / 2, height / 2))
-            .force('collision', d3.forceCollide().radius(d => this.radiusScale(this.pagerankScores[d.id]) + 5));
-
-        // Draw links
-        const link = this.svg.append('g')
-            .selectAll('line')
-            .data(this.graph.edges)
-            .enter().append('line')
-            .attr('class', 'link')
-            .attr('stroke-width', 1);
-
-        // Draw nodes
-        const node = this.svg.append('g')
-            .selectAll('circle')
-            .data(this.graph.nodes)
-            .enter().append('circle')
-            .attr('class', 'node')
-            .attr('r', d => this.radiusScale(this.pagerankScores[d.id] || 0))
-            .attr('fill', d => this.colorScale(this.pagerankScores[d.id] || 0))
-            .call(d3.drag()
-                .on('start', (event, d) => {
-                    if (!event.active) simulation.alphaTarget(0.3).restart();
-                    d.fx = d.x;
-                    d.fy = d.y;
-                })
-                .on('drag', (event, d) => {
-                    d.fx = event.x;
-                    d.fy = event.y;
-                })
-                .on('end', (event, d) => {
-                    if (!event.active) simulation.alphaTarget(0);
-                    d.fx = null;
-                    d.fy = null;
-                }))
-            .on('click', (event, d) => this.handleNodeClick(d.id));
-
-        // Add labels
-        const label = this.svg.append('g')
-            .selectAll('text')
-            .data(this.graph.nodes)
-            .enter().append('text')
-            .text(d => d.id)
-            .attr('font-size', 12)
-            .attr('dx', 15)
-            .attr('dy', 4)
-            .attr('fill', '#2c3e50')
-            .attr('font-weight', 'bold');
-
-        // Update simulation
-        simulation.on('tick', () => {
-            link
-                .attr('x1', d => d.source.x)
-                .attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x)
-                .attr('y2', d => d.target.y);
-
-            node
-                .attr('cx', d => d.x)
-                .attr('cy', d => d.y);
-
-            label
-                .attr('x', d => d.x)
-                .attr('y', d => d.y);
-        });
-
-        // Add tooltips
-        node.append('title')
-            .text(d => `User ${d.id}\nPageRank: ${(this.pagerankScores[d.id] || 0).toFixed(4)}`);
+    showError(message) {
+        alert(`Error: ${message}`);
     }
 
-    setupEventListeners() {
-        // Additional event listeners can be added here if needed
+    showSuccess(message) {
+        // You could replace this with a nicer notification system
+        console.log(`Success: ${message}`);
     }
 }
 
-// Initialize the app when the page loads
+// Initialize app when page loads
 let app;
 document.addEventListener('DOMContentLoaded', () => {
-    app = new FriendRecommenderApp();
+    app = new PageRankApp();
+    window.app = app;
 });
