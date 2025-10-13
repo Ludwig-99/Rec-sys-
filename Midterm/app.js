@@ -1,254 +1,340 @@
-let model;
-let carData = [];
-let carEmbeddings = {};
-let isModelTrained = false;
+// app.js
+let interactions = [];
+let cars = new Map();
+let userToCars = new Map();
+let carIdToIndex = new Map();
+let userIdToIndex = new Map();
+let indexToCarId = [];
+let indexToUserId = [];
+let model = null;
+let carEmbeddingsMatrix = null;
 
-// Load and parse CSV data
+const config = {
+  maxInteractions: 5000,
+  embeddingDim: 32,
+  epochs: 30,
+  batchSize: 64,
+  learningRate: 0.01,
+  sampleCarCount: 1000
+};
+
+const statusEl = document.getElementById('status');
+const loadBtn = document.getElementById('loadBtn');
+const trainBtn = document.getElementById('trainBtn');
+const testBtn = document.getElementById('testBtn');
+const lossCanvas = document.getElementById('lossChart');
+const embedCanvas = document.getElementById('embeddingCanvas');
+const resultsEl = document.getElementById('results');
+
+const ctxLoss = lossCanvas.getContext('2d');
+const ctxEmbed = embedCanvas.getContext('2d');
+
+// Utility: parse CSV
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const values = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h.trim()] = values[i].trim());
+    return obj;
+  });
+}
+
+// Load data from /data/
 async function loadData() {
-    const status = document.getElementById('status');
-    status.textContent = 'Loading car data...';
-    
-    try {
-        const response = await fetch('car data.csv');
-        const csvText = await response.text();
-        
-        // Parse CSV
-        const lines = csvText.split('\n').slice(1); // Skip header
-        carData = lines.filter(line => line.trim()).map(line => {
-            const [Car_Name, Year, Selling_Price, Present_Price, Kms_Driven, Fuel_Type, Seller_Type, Transmission, Owner] = line.split(',');
-            
-            return {
-                Car_Name: Car_Name.trim(),
-                Year: parseInt(Year),
-                Selling_Price: parseFloat(Selling_Price),
-                Present_Price: parseFloat(Present_Price),
-                Kms_Driven: parseInt(Kms_Driven),
-                Fuel_Type: Fuel_Type.trim(),
-                Seller_Type: Seller_Type.trim(),
-                Transmission: Transmission.trim(),
-                Owner: parseInt(Owner)
-            };
-        }).filter(car => car.Car_Name); // Remove empty entries
+  try {
+    statusEl.textContent = 'Loading interactions.csv...';
+    const interResp = await fetch('data/interactions.csv');
+    const interText = await interResp.text();
+    const interRows = parseCSV(interText);
 
-        populateCarSelect();
-        status.textContent = `Loaded ${carData.length} cars`;
-        
-    } catch (error) {
-        status.textContent = 'Error loading data: ' + error.message;
+    statusEl.textContent = 'Loading cars.csv...';
+    const carsResp = await fetch('data/cars.csv');
+    const carsText = await carsResp.text();
+    const carRows = parseCSV(carsText);
+
+    // Build cars map
+    cars.clear();
+    carRows.forEach(row => {
+      cars.set(row.car_id, {
+        make: row.make || 'Unknown',
+        model: row.model || 'Unknown',
+        year: row.year || '',
+        bodyType: row.body_type || '',
+        priceRange: row.price_range || ''
+      });
+    });
+
+    // Build interactions
+    interactions = interRows.slice(0, config.maxInteractions).map(r => ({
+      userId: r.user_id,
+      carId: r.car_id,
+      rating: parseFloat(r.rating),
+      ts: parseInt(r.timestamp)
+    }));
+
+    // Index users and cars
+    const uniqueUsers = [...new Set(interactions.map(i => i.userId))];
+    const uniqueCars = [...new Set(interactions.map(i => i.carId))];
+
+    userIdToIndex.clear();
+    carIdToIndex.clear();
+    indexToUserId = uniqueUsers;
+    indexToCarId = uniqueCars;
+
+    uniqueUsers.forEach((id, idx) => userIdToIndex.set(id, idx));
+    uniqueCars.forEach((id, idx) => carIdToIndex.set(id, idx));
+
+    // Build user → rated cars
+    userToCars.clear();
+    interactions.forEach(i => {
+      if (!userToCars.has(i.userId)) userToCars.set(i.userId, []);
+      userToCars.get(i.userId).push({
+        carId: i.carId,
+        rating: i.rating,
+        ts: i.ts
+      });
+    });
+
+    // Sort by rating (desc) then timestamp (desc)
+    for (let [userId, carsList] of userToCars.entries()) {
+      carsList.sort((a, b) => b.rating - a.rating || b.ts - a.ts);
     }
+
+    statusEl.textContent = `Loaded ${interactions.length} interactions, ${uniqueUsers.length} users, ${uniqueCars.length} cars.`;
+    trainBtn.disabled = false;
+  } catch (err) {
+    statusEl.textContent = `Error loading data: ${err.message}`;
+    console.error(err);
+  }
 }
 
-function populateCarSelect() {
-    const select = document.getElementById('carSelect');
-    select.innerHTML = '<option value="">Select a car...</option>';
-    
-    carData.forEach((car, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = `${car.Car_Name} (${car.Year}) - $${car.Selling_Price}`;
-        select.appendChild(option);
-    });
+// Draw loss curve
+let lossHistory = [];
+function drawLossChart(loss) {
+  lossHistory.push(loss);
+  ctxLoss.clearRect(0, 0, lossCanvas.width, lossCanvas.height);
+  const w = lossCanvas.width;
+  const h = lossCanvas.height;
+  const maxLoss = Math.max(...lossHistory);
+  const minLoss = Math.min(...lossHistory);
+  const range = maxLoss - minLoss || 1;
+
+  ctxLoss.beginPath();
+  ctxLoss.moveTo(0, h);
+  lossHistory.forEach((l, i) => {
+    const x = (i / (lossHistory.length - 1 || 1)) * w;
+    const y = h - ((l - minLoss) / range) * h;
+    if (i === 0) ctxLoss.moveTo(x, y);
+    else ctxLoss.lineTo(x, y);
+  });
+  ctxLoss.strokeStyle = '#1a5276';
+  ctxLoss.lineWidth = 2;
+  ctxLoss.stroke();
 }
 
-// Two Tower Model Architecture
-function createTwoTowerModel(inputDim, embeddingDim = 32) {
-    // User tower - represents user preferences
-    const userInput = tf.input({shape: [inputDim], name: 'user_input'});
-    const userTower = tf.layers.dense({units: 64, activation: 'relu'}).apply(userInput);
-    const userTower2 = tf.layers.dense({units: embeddingDim, activation: 'linear'}).apply(userTower);
-    const userEmbedding = tf.layers.l2Normalize().apply(userTower2);
-    
-    // Item tower - represents car features
-    const itemInput = tf.input({shape: [inputDim], name: 'item_input'});
-    const itemTower = tf.layers.dense({units: 64, activation: 'relu'}).apply(itemInput);
-    const itemTower2 = tf.layers.dense({units: embeddingDim, activation: 'linear'}).apply(itemTower);
-    const itemEmbedding = tf.layers.l2Normalize().apply(itemTower2);
-    
-    // Dot product for similarity
-    const dotProduct = tf.layers.dot({axes: -1, normalize: true}).apply([userEmbedding, itemEmbedding]);
-    
-    const model = tf.model({
-        inputs: [userInput, itemInput],
-        outputs: dotProduct,
-        name: 'TwoTowerRecommender'
-    });
-    
-    model.compile({
-        optimizer: 'adam',
-        loss: 'meanSquaredError'
-    });
-    
-    return model;
+// Approximate PCA for 2D projection
+function approximatePCA(embeddings, nComponents = 2) {
+  const n = embeddings.shape[0];
+  const d = embeddings.shape[1];
+  const data = embeddings.dataSync();
+
+  // Center data
+  const mean = new Array(d).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < d; j++) {
+      mean[j] += data[i * d + j];
+    }
+  }
+  for (let j = 0; j < d; j++) mean[j] /= n;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < d; j++) {
+      data[i * d + j] -= mean[j];
+    }
+  }
+
+  // Compute covariance (approx via random projection)
+  const proj = new Array(nComponents).fill(null).map(() => 
+    new Array(d).fill(null).map(() => Math.random() - 0.5)
+  );
+
+  const result = new Array(n).fill(null).map(() => new Array(nComponents).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < nComponents; k++) {
+      for (let j = 0; j < d; j++) {
+        result[i][k] += data[i * d + j] * proj[k][j];
+      }
+    }
+  }
+
+  return result;
 }
 
-// Preprocess car features
-function preprocessFeatures(car) {
-    // One-hot encoding for categorical features
-    const fuelTypes = ['Petrol', 'Diesel', 'CNG'];
-    const sellerTypes = ['Dealer', 'Individual'];
-    const transmissions = ['Manual', 'Automatic'];
-    
-    const features = [
-        // Normalized numerical features
-        (car.Year - 2000) / 20, // Normalize year
-        car.Selling_Price / 40, // Normalize selling price
-        car.Present_Price / 100, // Normalize present price
-        car.Kms_Driven / 250000, // Normalize kilometers
-        car.Owner / 3, // Normalize owner count
-        
-        // One-hot encoded categorical features
-        ...fuelTypes.map(ft => ft === car.Fuel_Type ? 1 : 0),
-        ...sellerTypes.map(st => st === car.Seller_Type ? 1 : 0),
-        ...transmissions.map(t => t === car.Transmission ? 1 : 0)
-    ];
-    
-    return tf.tensor1d(features);
+// Draw embedding projection
+async function drawEmbeddingProjection() {
+  if (!carEmbeddingsMatrix) return;
+
+  const sampleIndices = [];
+  const total = carEmbeddingsMatrix.shape[0];
+  const count = Math.min(config.sampleCarCount, total);
+  while (sampleIndices.length < count) {
+    const idx = Math.floor(Math.random() * total);
+    if (!sampleIndices.includes(idx)) sampleIndices.push(idx);
+  }
+
+  const sampled = tf.gather(carEmbeddingsMatrix, sampleIndices);
+  const proj2d = approximatePCA(sampled, 2);
+  sampled.dispose();
+
+  ctxEmbed.clearRect(0, 0, embedCanvas.width, embedCanvas.height);
+  const w = embedCanvas.width;
+  const h = embedCanvas.height;
+  const xs = proj2d.map(p => p[0]);
+  const ys = proj2d.map(p => p[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+
+  ctxEmbed.font = '12px Arial';
+  proj2d.forEach((p, i) => {
+    const carId = indexToCarId[sampleIndices[i]];
+    const car = cars.get(carId);
+    if (!car) return;
+
+    const x = ((p[0] - xMin) / xRange) * w;
+    const y = ((p[1] - yMin) / yRange) * h;
+
+    ctxEmbed.fillStyle = '#1a5276';
+    ctxEmbed.beginPath();
+    ctxEmbed.arc(x, y, 4, 0, Math.PI * 2);
+    ctxEmbed.fill();
+
+    // Optional: draw label on hover (simplified: just draw all)
+    // In real app, use mouse events
+  });
 }
 
-// Train the model
+// Train model
 async function trainModel() {
-    const status = document.getElementById('status');
-    
-    if (carData.length === 0) {
-        status.textContent = 'Please load data first';
-        return;
+  if (!interactions.length) {
+    statusEl.textContent = 'No data loaded!';
+    return;
+  }
+
+  const numUsers = userIdToIndex.size;
+  const numCars = carIdToIndex.size;
+
+  // Create brand map
+  const brands = new Set();
+  cars.forEach(car => brands.add(car.make));
+  const brandToIndex = new Map();
+  [...brands].forEach((b, i) => brandToIndex.set(b, i));
+  const numBrands = brands.size;
+
+  model = new TwoTowerModel(numUsers, numCars, numBrands, config.embeddingDim);
+  model.compile(tf.train.adam(config.learningRate));
+
+  lossHistory = [];
+  trainBtn.disabled = true;
+  testBtn.disabled = true;
+
+  const carBrands = indexToCarId.map(id => {
+    const car = cars.get(id);
+    return car ? brandToIndex.get(car.make) : 0;
+  });
+
+  for (let epoch = 0; epoch < config.epochs; epoch++) {
+    let epochLoss = 0;
+    let batchCount = 0;
+
+    // Shuffle interactions
+    const shuffled = [...interactions].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < shuffled.length; i += config.batchSize) {
+      const batch = shuffled.slice(i, i + config.batchSize);
+      if (batch.length < 2) continue;
+
+      const userIndices = batch.map(i => userIdToIndex.get(i.userId));
+      const posCarIndices = batch.map(i => carIdToIndex.get(i.carId));
+      const brandIndices = posCarIndices.map(idx => carBrands[idx]);
+
+      // Negative sampling: random cars not in batch
+      const negCarIndices = posCarIndices.map(() => 
+        Math.floor(Math.random() * numCars)
+      );
+
+      const loss = await model.trainStep(
+        tf.tensor1d(userIndices, 'int32'),
+        tf.tensor1d(posCarIndices, 'int32'),
+        tf.tensor1d(negCarIndices, 'int32'),
+        tf.tensor1d(brandIndices, 'int32')
+      );
+
+      epochLoss += loss;
+      batchCount++;
+      tf.dispose([loss]);
     }
-    
-    status.textContent = 'Training model...';
-    
-    const inputDim = 5 + 3 + 2 + 2; // Numerical + fuelTypes + sellerTypes + transmissions
-    
-    if (!model) {
-        model = createTwoTowerModel(inputDim);
-    }
-    
-    // Create training data (positive pairs: similar cars)
-    const userInputs = [];
-    const itemInputs = [];
-    const targets = [];
-    
-    for (let i = 0; i < carData.length; i++) {
-        const userFeatures = preprocessFeatures(carData[i]);
-        
-        // Find similar cars based on price and type
-        for (let j = 0; j < carData.length; j++) {
-            if (i !== j) {
-                const itemFeatures = preprocessFeatures(carData[j]);
-                
-                // Calculate similarity score
-                const priceDiff = Math.abs(carData[i].Selling_Price - carData[j].Selling_Price);
-                const yearDiff = Math.abs(carData[i].Year - carData[j].Year);
-                const fuelMatch = carData[i].Fuel_Type === carData[j].Fuel_Type ? 1 : 0;
-                
-                const similarity = Math.exp(-(priceDiff / 10 + yearDiff / 5)) * (fuelMatch + 1) / 2;
-                
-                userInputs.push(userFeatures);
-                itemInputs.push(itemFeatures);
-                targets.push(similarity);
-            }
-        }
-    }
-    
-    const userTensor = tf.stack(userInputs);
-    const itemTensor = tf.stack(itemInputs);
-    const targetTensor = tf.tensor1d(targets);
-    
-    // Train the model
-    await model.fit([userTensor, itemTensor], targetTensor, {
-        epochs: 50,
-        batchSize: 32,
-        validationSplit: 0.2,
-        callbacks: {
-            onEpochEnd: (epoch, logs) => {
-                status.textContent = `Training... Epoch ${epoch + 1}/50, Loss: ${logs.loss.toFixed(4)}`;
-            }
-        }
-    });
-    
-    // Precompute embeddings for all cars
-    status.textContent = 'Computing embeddings...';
-    for (let i = 0; i < carData.length; i++) {
-        const features = preprocessFeatures(carData[i]);
-        const embedding = model.layers[6].apply(features.reshape([1, -1])); // Get item embedding
-        carEmbeddings[i] = embedding;
-    }
-    
-    isModelTrained = true;
-    status.textContent = 'Model trained successfully!';
-    
-    // Clean up
-    userTensor.dispose();
-    itemTensor.dispose();
-    targetTensor.dispose();
-    tf.dispose(userInputs);
-    tf.dispose(itemInputs);
+
+    const avgLoss = epochLoss / batchCount;
+    drawLossChart(avgLoss);
+    statusEl.textContent = `Epoch ${epoch + 1}/${config.epochs} | Loss: ${avgLoss.toFixed(4)}`;
+    await tf.nextFrame(); // yield to UI
+  }
+
+  // Extract car embeddings for inference
+  const allCarIndices = tf.range(0, numCars, 1, 'int32');
+  const allBrandIndices = tf.tensor1d(carBrands, 'int32');
+  carEmbeddingsMatrix = model.itemForward(allCarIndices, allBrandIndices);
+  allCarIndices.dispose();
+  allBrandIndices.dispose();
+
+  drawEmbeddingProjection();
+
+  statusEl.textContent = 'Training complete!';
+  trainBtn.disabled = false;
+  testBtn.disabled = false;
 }
 
-// Get recommendations
-async function getRecommendations() {
-    const status = document.getElementById('status');
-    const results = document.getElementById('results');
-    const carSelect = document.getElementById('carSelect');
-    
-    if (!isModelTrained) {
-        status.textContent = 'Please train the model first';
-        return;
+// Test model
+async function testModel() {
+  // Find user with >=10 ratings
+  let testUser = null;
+  for (let [userId, carsList] of userToCars.entries()) {
+    if (carsList.length >= 10) {
+      testUser = userId;
+      break;
     }
-    
-    const selectedIndex = carSelect.value;
-    if (!selectedIndex) {
-        status.textContent = 'Please select a car';
-        return;
-    }
-    
-    status.textContent = 'Finding recommendations...';
-    results.innerHTML = '';
-    
-    const selectedCar = carData[selectedIndex];
-    const userFeatures = preprocessFeatures(selectedCar);
-    const userEmbedding = model.layers[3].apply(userFeatures.reshape([1, -1])); // Get user embedding
-    
-    // Calculate similarities with all cars
-    const similarities = [];
-    for (let i = 0; i < carData.length; i++) {
-        if (i != selectedIndex) {
-            const similarity = tf.dot(userEmbedding, carEmbeddings[i]).dataSync()[0];
-            similarities.push({index: i, similarity: similarity});
-        }
-    }
-    
-    // Sort by similarity (descending)
-    similarities.sort((a, b) => b.similarity - a.similarity);
-    
-    // Display top 5 recommendations
-    status.textContent = `Found ${similarities.length} recommendations`;
-    
-    const topRecommendations = similarities.slice(0, 5);
-    
-    results.innerHTML = `
-        <h3>Because you're interested in: ${selectedCar.Car_Name} (${selectedCar.Year})</h3>
-        <p>Price: $${selectedCar.Selling_Price} | ${selectedCar.Fuel_Type} | ${selectedCar.Transmission}</p>
-        <h4>Recommended Cars:</h4>
-    `;
-    
-    topRecommendations.forEach(rec => {
-        const car = carData[rec.index];
-        const carCard = document.createElement('div');
-        carCard.className = 'car-card';
-        carCard.innerHTML = `
-            <strong>${car.Car_Name} (${car.Year})</strong><br>
-            Price: $${car.Selling_Price} | Present: $${car.Present_Price}<br>
-            ${car.Kms_Driven} km | ${car.Fuel_Type} | ${car.Transmission}<br>
-            Seller: ${car.Seller_Type} | Previous Owners: ${car.Owner}<br>
-            <small>Similarity: ${rec.similarity.toFixed(3)}</small>
-        `;
-        results.appendChild(carCard);
-    });
-    
-    // Clean up
-    userFeatures.dispose();
-    userEmbedding.dispose();
-}
+  }
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', loadData);
+  if (!testUser) {
+    statusEl.textContent = 'No user with ≥10 ratings found.';
+    return;
+  }
+
+  const userIndex = userIdToIndex.get(testUser);
+  const userEmb = model.getUserEmbedding(userIndex);
+  const scores = model.getScoresForAllItems(userEmb, carEmbeddingsMatrix);
+  const scoresData = await scores.data();
+  userEmb.dispose();
+  scores.dispose();
+
+  // Get top-10 recommended (exclude already rated)
+  const ratedSet = new Set(userToCars.get(testUser).map(r => r.carId));
+  const scoredCars = indexToCarId
+    .map((carId, idx) => ({ carId, score: scoresData[idx] }))
+    .filter(item => !ratedSet.has(item.carId))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+
+  // Get top-10 historical
+  const topRated = userToCars.get(testUser).slice(0, 10);
+
+  // Render side-by-side
+  const leftTable = `
+    <div class="result-table">
+      <h3>Top-10 Rated by User</h3>
+      <table>
+        <thead><tr><th>Car</th><th>Rating</th></tr></thead>
+        <tbody>
+          ${top
