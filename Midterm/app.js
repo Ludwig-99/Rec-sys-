@@ -337,4 +337,43 @@ async function testModel() {
       <table>
         <thead><tr><th>Car</th><th>Rating</th></tr></thead>
         <tbody>
-          ${top
+          ${topRated.map(r => {
+            const car = cars.get(r.carId);
+            return `<tr><td>${car?.make || ''} ${car?.model || ''} (${car?.year || ''})</td><td>${r.rating}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  const rightTable = `
+    <div class="result-table">
+      <h3>Top-10 Recommended</h3>
+      <table>
+        <thead><tr><th>Car</th><th>Score</th></tr></thead>
+        <tbody>
+          ${scoredCars.map(item => {
+            const car = cars.get(item.carId);
+            return `<tr><td>${car?.make || ''} ${car?.model || ''} (${car?.year || ''})</td><td>${item.score.toFixed(3)}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  resultsEl.innerHTML = leftTable + rightTable;
+  statusEl.textContent = `Recommendations for user ${testUser}`;
+}
+
+// Event listeners
+loadBtn.addEventListener('click', loadData);
+trainBtn.addEventListener('click', trainModel);
+testBtn.addEventListener('click', testModel);
+
+// Initialize canvas sizes
+window.addEventListener('load', () => {
+  lossCanvas.width = lossCanvas.clientWidth;
+  lossCanvas.height = lossCanvas.clientHeight;
+  embedCanvas.width = embedCanvas.clientWidth;
+  embedCanvas.height = embedCanvas.clientHeight;
+});
