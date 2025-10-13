@@ -64,7 +64,7 @@ class CarFinderModel {
     carForward(carIndices, brandIndices, fuelIndices, transmissionIndices, sellerIndices) {
         return tf.tidy(() => {
             // Create numerical features from car indices (simulating continuous features)
-            const numericalFeatures = tf.ones([carIndices.length, 3]); // Placeholder for real numerical features
+            const numericalFeatures = tf.ones([carIndices.length, 3]);
             
             // Get categorical embeddings
             const brandEmb = this.brandEmbedding.apply(tf.tensor1d(brandIndices, 'int32'));
@@ -134,7 +134,7 @@ class CarFinderModel {
             // Create synthetic user preferences based on car features
             const userVectors = carEmbs.arraySync().map(emb => {
                 // Create user vector that prefers similar cars
-                return emb.map(val => val + (Math.random() - 0.5) * 0.1); // Add small noise
+                return emb.map(val => val + (Math.random() - 0.5) * 0.1);
             });
             
             const userTensor = tf.tensor2d(userVectors);
@@ -196,11 +196,11 @@ class CarFinderModel {
     getCarEmbeddings() {
         return tf.tidy(() => {
             // Create dummy indices for demonstration
-            const dummyIndices = Array.from({length: 20}, (_, i) => i);
-            const dummyBrands = Array.from({length: 20}, (_, i) => i % this.numBrands);
-            const dummyFuels = Array.from({length: 20}, (_, i) => i % this.numFuelTypes);
-            const dummyTransmissions = Array.from({length: 20}, (_, i) => i % this.numTransmissions);
-            const dummySellers = Array.from({length: 20}, (_, i) => i % this.numSellerTypes);
+            const dummyIndices = Array.from({length: 25}, (_, i) => i);
+            const dummyBrands = Array.from({length: 25}, (_, i) => i % this.numBrands);
+            const dummyFuels = Array.from({length: 25}, (_, i) => i % this.numFuelTypes);
+            const dummyTransmissions = Array.from({length: 25}, (_, i) => i % this.numTransmissions);
+            const dummySellers = Array.from({length: 25}, (_, i) => i % this.numSellerTypes);
             
             return this.carForward(dummyIndices, dummyBrands, dummyFuels, dummyTransmissions, dummySellers);
         });
