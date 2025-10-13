@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PageRank Friend Recommender</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Используем надежные CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <style>
         body {
@@ -86,6 +87,16 @@
             padding: 15px;
             box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.1);
             min-height: 500px;
+            position: relative;
+        }
+        .graph-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 16px;
         }
         .info-panel {
             background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
@@ -172,14 +183,18 @@
             stroke-opacity: 1;
             stroke-width: 3px;
         }
-        .status {
-            text-align: center;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 10px;
-            margin: 10px 0;
-            font-weight: bold;
-            color: #2c3e50;
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -194,7 +209,10 @@
 
         <div class="main-content">
             <div id="graph">
-                <div class="status">Loading graph visualization...</div>
+                <div class="graph-status" id="graphStatus">
+                    <div class="loading"></div>
+                    Loading graph visualization...
+                </div>
             </div>
             <div class="info-panel">
                 <h3>📊 Network Information</h3>
@@ -222,8 +240,58 @@
         </div>
     </div>
 
-    <script src="pagerank.js"></script>
-    <script src="graph.js"></script>
-    <script src="app.js"></script>
+    <script>
+        // Проверяем загрузку библиотек
+        function checkLibraries() {
+            const status = document.getElementById('graphStatus');
+            
+            if (typeof d3 === 'undefined') {
+                status.innerHTML = '❌ Error: D3.js library failed to load. Please check your internet connection.';
+                return false;
+            }
+            
+            if (typeof tf === 'undefined') {
+                status.innerHTML = '❌ Error: TensorFlow.js library failed to load. Please check your internet connection.';
+                return false;
+            }
+            
+            console.log('✅ All libraries loaded successfully');
+            status.innerHTML = '✅ Libraries loaded. Initializing graph...';
+            return true;
+        }
+
+        // Загружаем скрипты последовательно
+        function initializeApp() {
+            if (checkLibraries()) {
+                // Загружаем наши скрипты после проверки библиотек
+                const scripts = ['pagerank.js', 'graph.js', 'app.js'];
+                
+                function loadScript(index) {
+                    if (index >= scripts.length) {
+                        console.log('✅ All application scripts loaded');
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = scripts[index];
+                    script.onload = () => {
+                        console.log(`✅ Loaded: ${scripts[index]}`);
+                        loadScript(index + 1);
+                    };
+                    script.onerror = () => {
+                        console.error(`❌ Failed to load: ${scripts[index]}`);
+                        document.getElementById('graphStatus').innerHTML = 
+                            `❌ Error loading ${scripts[index]}. Please check if file exists.`;
+                    };
+                    document.body.appendChild(script);
+                }
+                
+                loadScript(0);
+            }
+        }
+
+        // Запускаем инициализацию когда страница загружена
+        document.addEventListener('DOMContentLoaded', initializeApp);
+    </script>
 </body>
 </html>
