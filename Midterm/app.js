@@ -452,4 +452,140 @@ class CarFinderApp {
                 if (car.presentPrice > this.userPreferences.maxBudget) return;
                 if (this.userPreferences.fuelType !== 'any' && car.fuelType !== this.userPreferences.fuelType) return;
                 if (this.userPreferences.transmission !== 'any' && car.transmission !== this.userPreferences.transmission) return;
-               
+                if (this.userPreferences.sellerType !== 'any' && car.sellerType !== this.userPreferences.sellerType) return;
+                if (car.kmsDriven > this.userPreferences.maxKms) return;
+                
+                candidateCars.push({ 
+                    car, 
+                    score,
+                    valueScore: this.calculateValueScore(car)
+                });
+            });
+            
+            // Sort by combined score (model score + value score)
+            candidateCars.sort((a, b) => {
+                const scoreA = a.score + a.valueScore;
+                const scoreB = b.score + b.valueScore;
+                return scoreB - scoreA;
+            });
+            
+            const topRecommendations = candidateCars.slice(0, 10);
+            
+            // Display results
+            this.displayResults(topRecommendations);
+            
+        } catch (error) {
+            this.updateStatus(`❌ Error finding cars: ${error.message}`);
+        }
+    }
+    
+    createUserVector() {
+        // Create a synthetic user vector based on preferences
+        const vector = Array(this.config.embeddingDim).fill(0);
+        
+        // Bias towards preferred features
+        if (this.userPreferences.fuelType !== 'any') {
+            vector[0] = 1.0; // Fuel type importance
+        }
+        if (this.userPreferences.transmission !== 'any') {
+            vector[1] = 0.8; // Transmission importance
+        }
+        
+        // Budget preference (lower budget = higher value in lower dimensions)
+        const budgetRatio = Math.max(0, 1 - (this.userPreferences.maxBudget / 50));
+        vector[2] = budgetRatio;
+        
+        // Kilometer preference (lower kms = higher value)
+        const kmRatio = Math.max(0, 1 - (this.userPreferences.maxKms / 200000));
+        vector[3] = kmRatio;
+        
+        return vector;
+    }
+    
+    calculateValueScore(car) {
+        // Calculate value score based on price, age, and kilometers
+        const priceScore = Math.max(0, 1 - (car.presentPrice / this.userPreferences.maxBudget));
+        const ageScore = Math.max(0, 1 - (car.age / 20));
+        const kmScore = Math.max(0, 1 - (car.kmsDriven / this.userPreferences.maxKms));
+        
+        return (priceScore * 0.5 + ageScore * 0.3 + kmScore * 0.2) * 2;
+    }
+    
+    displayResults(recommendations) {
+        const resultsDiv = document.getElementById('results');
+        
+        let html = `
+            <h2 style="color: #6ecadc; margin-bottom: 20px;">🚗 Top Car Recommendations</h2>
+            <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #e8f4f8, #d4edf2); border-radius: 10px; border-left: 4px solid #6ecadc;">
+                <strong>🎯 Your Preferences:</strong> 
+                Max Budget: ₹${this.userPreferences.maxBudget}L | 
+                Fuel: ${this.userPreferences.fuelType} | 
+                Transmission: ${this.userPreferences.transmission} | 
+                Seller: ${this.userPreferences.sellerType} | 
+                Max Kms: ${this.userPreferences.maxKms.toLocaleString()}
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Car</th>
+                        <th>Brand</th>
+                        <th>Year</th>
+                        <th>Price (L)</th>
+                        <th>Kms</th>
+                        <th>Fuel</th>
+                        <th>Transmission</th>
+                        <th>Match Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        recommendations.forEach((rec, index) => {
+            const car = rec.car;
+            const totalScore = Math.min(100, (rec.score + rec.valueScore) * 25); // Normalize to 0-100
+            
+            html += `
+                <tr>
+                    <td><strong>${index + 1}</strong></td>
+                    <td>${car.carName}</td>
+                    <td>${car.brand}</td>
+                    <td>${car.year}</td>
+                    <td style="color: ${car.presentPrice <= this.userPreferences.maxBudget ? '#27ae60' : '#e74c3c'}">
+                        ₹${car.presentPrice.toFixed(2)}L
+                    </td>
+                    <td>${car.kmsDriven.toLocaleString()}</td>
+                    <td>${car.fuelType}</td>
+                    <td>${car.transmission}</td>
+                    <td>
+                        <div style="background: #ecf0f1; border-radius: 10px; height: 8px; margin: 5px 0;">
+                            <div style="background: linear-gradient(90deg, #6ecadc, #4bb5c3); width: ${totalScore}%; height: 100%; border-radius: 10px;"></div>
+                        </div>
+                        ${totalScore.toFixed(1)}%
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #ffeaa7, #fdcb6e); border-radius: 10px; border-left: 4px solid #f39c12;">
+                <strong>💡 Pro Tip:</strong> Consider test driving the top recommendations and comparing insurance costs before making a decision.
+            </div>
+        `;
+        
+        resultsDiv.innerHTML = html;
+        this.updateStatus(`✅ Found ${recommendations.length} cars matching your preferences!`);
+    }
+    
+    updateStatus(message) {
+        document.getElementById('status').textContent = message;
+    }
+}
+
+// Initialize app when page loads
+let app;
+document.addEventListener('DOMContentLoaded', () => {
+    app = new CarFinderApp();
+});
