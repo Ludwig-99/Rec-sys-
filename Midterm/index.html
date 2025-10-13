@@ -4,155 +4,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Car Recommender System Demo</title>
+  <title>Car Recommender System – Frutiger Aero UI</title>
   <style>
-    :root {
-      --aero-blue: #a0c4e8;
-      --aero-green: #b0e0a0;
-      --glass-bg: rgba(255, 255, 255, 0.35);
-      --glass-border: rgba(255, 255, 255, 0.6);
-      --btn-bg: linear-gradient(to bottom, #e0f0ff, #c0e0ff);
-      --btn-border: #88c0e8;
-    }
-
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, var(--aero-blue), var(--aero-green));
+      background: linear-gradient(135deg, #a0d8ef 0%, #ffffff 100%);
       margin: 0;
       padding: 20px;
       color: #222;
     }
-
-    .panel {
-      background: var(--glass-bg);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--glass-border);
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.85);
       border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.2);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
     }
-
     h1 {
       text-align: center;
-      margin-top: 0;
-      color: #1a5276;
-      text-shadow: 1px 1px 2px rgba(255,255,255,0.7);
+      color: #0066cc;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-
-    .controls {
+    .btn-group {
       display: flex;
       gap: 12px;
-      flex-wrap: wrap;
       justify-content: center;
+      margin: 20px 0;
     }
-
     button {
       padding: 10px 20px;
       font-size: 16px;
-      font-weight: bold;
-      background: var(--btn-bg);
-      border: 2px solid var(--btn-border);
-      border-radius: 12px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+      color: white;
       cursor: pointer;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-      transition: transform 0.1s, box-shadow 0.1s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-
     button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(0,0,0,0.25);
+      box-shadow: 0 6px 8px rgba(0,0,0,0.15);
     }
-
-    button:active {
-      transform: translateY(1px);
-    }
-
     button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
     }
-
+    #status {
+      text-align: center;
+      margin: 16px 0;
+      font-weight: bold;
+      color: #007acc;
+    }
+    .chart-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+      margin: 20px 0;
+    }
     canvas {
-      width: 100%;
-      height: 300px;
       background: white;
       border-radius: 10px;
-      margin-top: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-
     #results {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
+      margin-top: 30px;
     }
-
-    .result-table {
-      flex: 1;
-      min-width: 300px;
-    }
-
     table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-top: 16px;
     }
-
     th, td {
       padding: 10px;
       text-align: left;
       border-bottom: 1px solid #ddd;
     }
-
     th {
-      background: var(--aero-blue);
-      color: #1a5276;
+      background-color: #e6f4ff;
+      color: #0066cc;
     }
-
     .tip {
-      font-size: 0.9em;
-      color: #2c3e50;
-      margin-top: 10px;
-      padding: 10px;
-      background: rgba(255,255,255,0.6);
-      border-radius: 8px;
+      font-size: 14px;
+      color: #555;
+      margin-top: 20px;
+      padding: 12px;
+      background: #f0f9ff;
+      border-left: 4px solid #00a8ff;
+      border-radius: 0 8px 8px 0;
     }
   </style>
 </head>
 <body>
-  <div class="panel">
-    <h1>Car Recommender System Demo</h1>
-    <div class="controls">
+  <div class="container">
+    <h1>🚗 Car Recommender System</h1>
+    <div class="btn-group">
       <button id="loadBtn">Load Data</button>
-      <button id="trainBtn" disabled>Train</button>
-      <button id="testBtn" disabled>Test</button>
+      <button id="trainBtn" disabled>Train Model</button>
+      <button id="testBtn" disabled>Test Recommendation</button>
     </div>
     <div id="status">Ready. Click "Load Data" to begin.</div>
+
+    <div class="chart-container">
+      <div>
+        <h3>Training Loss</h3>
+        <canvas id="lossChart" width="500" height="200"></canvas>
+      </div>
+      <div>
+        <h3>Item Embedding Projection (PCA)</h3>
+        <canvas id="embeddingChart" width="500" height="200"></canvas>
+      </div>
+    </div>
+
+    <div id="results"></div>
+
     <div class="tip">
-      ⏱️ Training may take 30–90 seconds.<br>
-      📁 Uses only your uploaded <code>car data.csv</code> — no external files!
+      <strong>How to use:</strong> Place your car datasets in <code>/data/</code> as <code>cars.csv</code> (columns: Car_Name,Year,Selling_Price,Present_Price,Kms_Driven,Fuel_Type,Seller_Type,Transmission,Owner).<br>
+      This demo runs entirely in-browser using TensorFlow.js. Training may take 1–3 minutes on modern devices.<br>
+      Host this folder on GitHub Pages for live demo!
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Training Loss</h2>
-    <canvas id="lossChart"></canvas>
-  </div>
-
-  <div class="panel">
-    <h2>Car Embedding Projection (2D)</h2>
-    <canvas id="embeddingCanvas"></canvas>
-  </div>
-
-  <div class="panel">
-    <h2>Recommendations</h2>
-    <div id="results"></div>
-  </div>
-
+  <!-- Load TensorFlow.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
   <script src="two-tower.js"></script>
   <script src="app.js"></script>
