@@ -14,50 +14,45 @@ class CarFinderModel {
         this.embeddingDim = embeddingDim;
         this.hiddenDim = hiddenDim;
         
-        // Car Tower: learns embeddings based on car features
-        this.carTower = {
-            brandEmbedding: tf.layers.embedding({
-                inputDim: numBrands,
-                outputDim: Math.floor(embeddingDim / 4),
-                name: 'brand_embedding'
-            }),
-            fuelEmbedding: tf.layers.embedding({
-                inputDim: numFuelTypes,
-                outputDim: Math.floor(embeddingDim / 8),
-                name: 'fuel_embedding'
-            }),
-            transmissionEmbedding: tf.layers.embedding({
-                inputDim: numTransmissions,
-                outputDim: Math.floor(embeddingDim / 8),
-                name: 'transmission_embedding'
-            }),
-            sellerEmbedding: tf.layers.embedding({
-                inputDim: numSellerTypes,
-                outputDim: Math.floor(embeddingDim / 8),
-                name: 'seller_embedding'
-            }),
-            dense1: tf.layers.dense({
-                units: hiddenDim,
-                activation: 'relu',
-                name: 'car_dense1'
-            }),
-            dense2: tf.layers.dense({
-                units: Math.floor(hiddenDim / 2),
-                activation: 'relu',
-                name: 'car_dense2'
-            }),
-            output: tf.layers.dense({
-                units: embeddingDim,
-                activation: 'linear',
-                name: 'car_output'
-            })
-        };
+        // Initialize embeddings and layers
+        this.brandEmbedding = tf.layers.embedding({
+            inputDim: numBrands,
+            outputDim: Math.floor(embeddingDim / 4)
+        });
         
-        // User Tower: processes user preferences
-        this.userTower = tf.layers.dense({
+        this.fuelEmbedding = tf.layers.embedding({
+            inputDim: numFuelTypes,
+            outputDim: Math.floor(embeddingDim / 8)
+        });
+        
+        this.transmissionEmbedding = tf.layers.embedding({
+            inputDim: numTransmissions,
+            outputDim: Math.floor(embeddingDim / 8)
+        });
+        
+        this.sellerEmbedding = tf.layers.embedding({
+            inputDim: numSellerTypes,
+            outputDim: Math.floor(embeddingDim / 8)
+        });
+        
+        this.carDense1 = tf.layers.dense({
             units: hiddenDim,
-            activation: 'relu',
-            name: 'user_dense1'
+            activation: 'relu'
+        });
+        
+        this.carDense2 = tf.layers.dense({
+            units: Math.floor(hiddenDim / 2),
+            activation: 'relu'
+        });
+        
+        this.carOutput = tf.layers.dense({
+            units: embeddingDim,
+            activation: 'linear'
+        });
+        
+        this.userDense = tf.layers.dense({
+            units: hiddenDim,
+            activation: 'relu'
         });
         
         this.optimizer = tf.train.adam(0.001);
@@ -72,10 +67,10 @@ class CarFinderModel {
             const numericalFeatures = tf.ones([carIndices.length, 3]); // Placeholder for real numerical features
             
             // Get categorical embeddings
-            const brandEmb = this.carTower.brandEmbedding.apply(tf.tensor1d(brandIndices, 'int32'));
-            const fuelEmb = this.carTower.fuelEmbedding.apply(tf.tensor1d(fuelIndices, 'int32'));
-            const transmissionEmb = this.carTower.transmissionEmbedding.apply(tf.tensor1d(transmissionIndices, 'int32'));
-            const sellerEmb = this.carTower.sellerEmbedding.apply(tf.tensor1d(sellerIndices, 'int32'));
+            const brandEmb = this.brandEmbedding.apply(tf.tensor1d(brandIndices, 'int32'));
+            const fuelEmb = this.fuelEmbedding.apply(tf.tensor1d(fuelIndices, 'int32'));
+            const transmissionEmb = this.transmissionEmbedding.apply(tf.tensor1d(transmissionIndices, 'int32'));
+            const sellerEmb = this.sellerEmbedding.apply(tf.tensor1d(sellerIndices, 'int32'));
             
             // Flatten all embeddings
             const flatBrand = tf.layers.flatten().apply(brandEmb);
@@ -93,9 +88,9 @@ class CarFinderModel {
             ]);
             
             // Pass through dense layers
-            const hidden1 = this.carTower.dense1.apply(concatenated);
-            const hidden2 = this.carTower.dense2.apply(hidden1);
-            const output = this.carTower.output.apply(hidden2);
+            const hidden1 = this.carDense1.apply(concatenated);
+            const hidden2 = this.carDense2.apply(hidden1);
+            const output = this.carOutput.apply(hidden2);
             
             return output;
         });
@@ -107,7 +102,7 @@ class CarFinderModel {
     userForward(userVector) {
         return tf.tidy(() => {
             const userTensor = tf.tensor2d([userVector]);
-            return this.userTower.apply(userTensor);
+            return this.userDense.apply(userTensor);
         });
     }
     
@@ -143,7 +138,7 @@ class CarFinderModel {
             });
             
             const userTensor = tf.tensor2d(userVectors);
-            const userEmbs = this.userTower.apply(userTensor);
+            const userEmbs = this.userDense.apply(userTensor);
             
             // Compute similarity matrix
             const logits = this.score(userEmbs, carEmbs);
@@ -181,16 +176,16 @@ class CarFinderModel {
         const variables = [];
         
         // Car tower variables
-        variables.push(...this.carTower.brandEmbedding.getWeights());
-        variables.push(...this.carTower.fuelEmbedding.getWeights());
-        variables.push(...this.carTower.transmissionEmbedding.getWeights());
-        variables.push(...this.carTower.sellerEmbedding.getWeights());
-        variables.push(...this.carTower.dense1.getWeights());
-        variables.push(...this.carTower.dense2.getWeights());
-        variables.push(...this.carTower.output.getWeights());
+        variables.push(...this.brandEmbedding.getWeights());
+        variables.push(...this.fuelEmbedding.getWeights());
+        variables.push(...this.transmissionEmbedding.getWeights());
+        variables.push(...this.sellerEmbedding.getWeights());
+        variables.push(...this.carDense1.getWeights());
+        variables.push(...this.carDense2.getWeights());
+        variables.push(...this.carOutput.getWeights());
         
         // User tower variables
-        variables.push(...this.userTower.getWeights());
+        variables.push(...this.userDense.getWeights());
         
         return variables;
     }
@@ -200,13 +195,12 @@ class CarFinderModel {
      */
     getCarEmbeddings() {
         return tf.tidy(() => {
-            // Create dummy indices for all possible combinations
-            // In a real implementation, you'd pass actual car data
-            const dummyIndices = Array.from({length: this.numBrands * 2}, (_, i) => i % this.numBrands);
-            const dummyBrands = Array.from({length: this.numBrands * 2}, (_, i) => i % this.numBrands);
-            const dummyFuels = Array.from({length: this.numBrands * 2}, (_, i) => i % this.numFuelTypes);
-            const dummyTransmissions = Array.from({length: this.numBrands * 2}, (_, i) => i % this.numTransmissions);
-            const dummySellers = Array.from({length: this.numBrands * 2}, (_, i) => i % this.numSellerTypes);
+            // Create dummy indices for demonstration
+            const dummyIndices = Array.from({length: 20}, (_, i) => i);
+            const dummyBrands = Array.from({length: 20}, (_, i) => i % this.numBrands);
+            const dummyFuels = Array.from({length: 20}, (_, i) => i % this.numFuelTypes);
+            const dummyTransmissions = Array.from({length: 20}, (_, i) => i % this.numTransmissions);
+            const dummySellers = Array.from({length: 20}, (_, i) => i % this.numSellerTypes);
             
             return this.carForward(dummyIndices, dummyBrands, dummyFuels, dummyTransmissions, dummySellers);
         });
@@ -220,7 +214,7 @@ class CarFinderModel {
             // Get user embedding
             const userEmb = this.userForward(userVector);
             
-            // Get all car embeddings (simplified - using dummy data)
+            // Get all car embeddings
             const carEmbs = this.getCarEmbeddings();
             
             // Compute scores
