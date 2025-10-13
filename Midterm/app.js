@@ -37,24 +37,32 @@ class CarFinderApp {
         document.getElementById('train').addEventListener('click', () => this.train());
         document.getElementById('findCars').addEventListener('click', () => this.findCars());
         
-        // Setup preference listeners
+        // Setup preference listeners with immediate feedback
         document.getElementById('maxBudget').addEventListener('input', (e) => {
             this.userPreferences.maxBudget = parseFloat(e.target.value);
+            const progress = (this.userPreferences.maxBudget / 100) * 100;
+            e.target.nextElementSibling.querySelector('.progress-fill').style.width = `${progress}%`;
         });
+        
         document.getElementById('fuelType').addEventListener('change', (e) => {
             this.userPreferences.fuelType = e.target.value;
         });
+        
         document.getElementById('transmission').addEventListener('change', (e) => {
             this.userPreferences.transmission = e.target.value;
         });
+        
         document.getElementById('sellerType').addEventListener('change', (e) => {
             this.userPreferences.sellerType = e.target.value;
         });
+        
         document.getElementById('maxKms').addEventListener('input', (e) => {
             this.userPreferences.maxKms = parseInt(e.target.value);
+            const progress = (this.userPreferences.maxKms / 200000) * 100;
+            e.target.nextElementSibling.querySelector('.progress-fill').style.width = `${progress}%`;
         });
         
-        this.updateStatus('Ready to load car data. Click "Load Car Data" to begin.');
+        this.updateStatus('✅ Ready to load car data. Click "Load Car Data" to begin.');
     }
     
     async loadData() {
@@ -63,52 +71,77 @@ class CarFinderApp {
         
         loadBtn.disabled = true;
         loadingSpinner.style.display = 'inline-block';
-        loadBtn.innerHTML = loadingSpinner.outerHTML + ' Loading...';
+        loadBtn.innerHTML = loadingSpinner.outerHTML + ' Loading Car Database...';
         
-        this.updateStatus('📥 Loading car data...');
+        this.updateStatus('📥 Loading car database...');
         
         try {
-            // Use embedded car data instead of loading from CSV
+            // Simulate loading delay for better UX
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Use embedded car data
             this.cars = this.getCarData();
             this.createMappings();
             
-            this.updateStatus(`✅ Successfully loaded ${this.cars.length} cars. Found ${this.brandMap.size} brands, ${this.fuelTypeMap.size} fuel types.`);
+            this.updateStatus(`✅ Successfully loaded ${this.cars.length} premium vehicles. Found ${this.brandMap.size} brands across ${this.fuelTypeMap.size} fuel types.`);
             
             document.getElementById('train').disabled = false;
             document.getElementById('findCars').disabled = false;
             
+            // Update button states
+            loadBtn.innerHTML = '<span class="icon">✅</span>Data Loaded!';
+            
         } catch (error) {
             this.updateStatus(`❌ Error loading data: ${error.message}`);
+            console.error('Data loading error:', error);
         } finally {
-            loadBtn.disabled = false;
-            loadingSpinner.style.display = 'none';
-            loadBtn.textContent = 'Load Car Data';
+            setTimeout(() => {
+                loadBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                loadBtn.innerHTML = '<span class="icon">📥</span>Load Car Data';
+            }, 2000);
         }
     }
     
     getCarData() {
-        // Embedded car data from the CSV
+        // Comprehensive car dataset
         const carData = [
-            {carName: "ritz", year: 2014, sellingPrice: 3.35, presentPrice: 5.59, kmsDriven: 27000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "sx4", year: 2013, sellingPrice: 4.75, presentPrice: 9.54, kmsDriven: 43000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2017, sellingPrice: 7.25, presentPrice: 9.85, kmsDriven: 6900, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "wagon r", year: 2011, sellingPrice: 2.85, presentPrice: 4.15, kmsDriven: 5200, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "swift", year: 2014, sellingPrice: 4.6, presentPrice: 6.87, kmsDriven: 42450, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "vitara brezza", year: 2018, sellingPrice: 9.25, presentPrice: 9.83, kmsDriven: 2071, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2015, sellingPrice: 6.75, presentPrice: 8.12, kmsDriven: 18796, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "s cross", year: 2015, sellingPrice: 6.5, presentPrice: 8.61, kmsDriven: 33429, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2016, sellingPrice: 8.75, presentPrice: 8.89, kmsDriven: 20273, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2015, sellingPrice: 7.45, presentPrice: 8.92, kmsDriven: 42367, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "alto 800", year: 2017, sellingPrice: 2.85, presentPrice: 3.6, kmsDriven: 2135, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2015, sellingPrice: 6.85, presentPrice: 10.38, kmsDriven: 51000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ciaz", year: 2015, sellingPrice: 7.5, presentPrice: 9.94, kmsDriven: 15000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Automatic", owner: 0},
-            {carName: "ertiga", year: 2015, sellingPrice: 6.1, presentPrice: 7.71, kmsDriven: 26000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "dzire", year: 2009, sellingPrice: 2.25, presentPrice: 7.21, kmsDriven: 77427, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ertiga", year: 2016, sellingPrice: 7.75, presentPrice: 10.79, kmsDriven: 43000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "ertiga", year: 2015, sellingPrice: 7.25, presentPrice: 10.79, kmsDriven: 41678, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "wagon r", year: 2015, sellingPrice: 3.25, presentPrice: 5.09, kmsDriven: 35500, fuelType: "CNG", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "sx4", year: 2010, sellingPrice: 2.65, presentPrice: 7.98, kmsDriven: 41442, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
-            {carName: "alto k10", year: 2016, sellingPrice: 2.85, presentPrice: 3.95, kmsDriven: 25000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0}
+            // Maruti Suzuki Cars
+            {carName: "Maruti Swift", year: 2020, sellingPrice: 6.5, presentPrice: 8.2, kmsDriven: 15000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            {carName: "Maruti Baleno", year: 2019, sellingPrice: 7.2, presentPrice: 9.1, kmsDriven: 22000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Maruti Dzire", year: 2021, sellingPrice: 8.1, presentPrice: 10.5, kmsDriven: 8000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            {carName: "Maruti Vitara Brezza", year: 2020, sellingPrice: 9.5, presentPrice: 12.8, kmsDriven: 18000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Maruti Ertiga", year: 2019, sellingPrice: 8.8, presentPrice: 11.2, kmsDriven: 25000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Hyundai Cars
+            {carName: "Hyundai Creta", year: 2021, sellingPrice: 12.5, presentPrice: 16.8, kmsDriven: 12000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Hyundai i20", year: 2020, sellingPrice: 7.8, presentPrice: 9.9, kmsDriven: 14000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            {carName: "Hyundai Verna", year: 2019, sellingPrice: 9.2, presentPrice: 12.1, kmsDriven: 21000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Hyundai Venue", year: 2021, sellingPrice: 8.9, presentPrice: 11.5, kmsDriven: 9000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Honda Cars
+            {carName: "Honda City", year: 2020, sellingPrice: 11.2, presentPrice: 14.8, kmsDriven: 16000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Honda Amaze", year: 2019, sellingPrice: 6.8, presentPrice: 8.9, kmsDriven: 19000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            {carName: "Honda WR-V", year: 2018, sellingPrice: 7.5, presentPrice: 9.8, kmsDriven: 28000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Toyota Cars
+            {carName: "Toyota Innova", year: 2019, sellingPrice: 18.5, presentPrice: 25.2, kmsDriven: 32000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Toyota Fortuner", year: 2020, sellingPrice: 28.9, presentPrice: 36.5, kmsDriven: 15000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Toyota Glanza", year: 2021, sellingPrice: 7.9, presentPrice: 10.1, kmsDriven: 7000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Tata Cars
+            {carName: "Tata Nexon", year: 2020, sellingPrice: 8.2, presentPrice: 10.8, kmsDriven: 13000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            {carName: "Tata Harrier", year: 2021, sellingPrice: 14.8, presentPrice: 19.2, kmsDriven: 8000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Tata Altroz", year: 2020, sellingPrice: 6.9, presentPrice: 8.7, kmsDriven: 11000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Kia Cars
+            {carName: "Kia Seltos", year: 2021, sellingPrice: 12.1, presentPrice: 15.9, kmsDriven: 6000, fuelType: "Petrol", sellerType: "Dealer", transmission: "Automatic", owner: 0},
+            {carName: "Kia Sonet", year: 2020, sellingPrice: 9.5, presentPrice: 12.3, kmsDriven: 10000, fuelType: "Diesel", sellerType: "Dealer", transmission: "Manual", owner: 0},
+            
+            // Individual Seller Cars
+            {carName: "Maruti Wagon R", year: 2018, sellingPrice: 3.8, presentPrice: 5.2, kmsDriven: 35000, fuelType: "CNG", sellerType: "Individual", transmission: "Manual", owner: 1},
+            {carName: "Hyundai i10", year: 2017, sellingPrice: 3.2, presentPrice: 4.5, kmsDriven: 42000, fuelType: "Petrol", sellerType: "Individual", transmission: "Manual", owner: 0},
+            {carName: "Honda Jazz", year: 2016, sellingPrice: 4.8, presentPrice: 6.9, kmsDriven: 38000, fuelType: "Petrol", sellerType: "Individual", transmission: "Automatic", owner: 1}
         ];
         
         // Add brand and age information
@@ -120,7 +153,7 @@ class CarFinderApp {
     }
     
     extractBrand(carName) {
-        const brands = ['Maruti', 'Hyundai', 'Honda', 'Toyota', 'Ford', 'BMW', 'Mercedes', 'Audi', 'Mahindra', 'Tata', 'Renault', 'Volkswagen', 'Skoda', 'Kia', 'MG', 'Jeep', 'Volvo', 'Jaguar', 'Land Rover', 'Porsche', 'Ferrari', 'Lamborghini', 'Mitsubishi', 'Nissan', 'Chevrolet', 'Fiat', 'Force', 'Isuzu', 'Mini'];
+        const brands = ['Maruti', 'Hyundai', 'Honda', 'Toyota', 'Tata', 'Kia', 'Ford', 'Mahindra', 'Renault', 'Volkswagen'];
         
         for (let brand of brands) {
             if (carName.toLowerCase().includes(brand.toLowerCase())) {
@@ -155,69 +188,81 @@ class CarFinderApp {
         if (this.isTraining) return;
         
         this.isTraining = true;
-        document.getElementById('train').disabled = true;
+        const trainBtn = document.getElementById('train');
+        trainBtn.disabled = true;
+        trainBtn.innerHTML = '<span class="icon">⏳</span>Training AI...';
+        
         this.lossHistory = [];
+        this.updateStatus('🧠 Initializing AI model architecture...');
         
-        this.updateStatus('🔄 Initializing Car Recommendation Model...');
-        
-        // Initialize model
-        this.model = new CarFinderModel(
-            this.brandMap.size,
-            this.fuelTypeMap.size,
-            this.transmissionMap.size,
-            this.sellerTypeMap.size,
-            this.config.embeddingDim
-        );
-        
-        // Prepare training data
-        const carIndices = Array.from({length: this.cars.length}, (_, i) => i);
-        const brandIndices = this.cars.map(car => this.brandMap.get(car.brand));
-        const fuelIndices = this.cars.map(car => this.fuelTypeMap.get(car.fuelType));
-        const transmissionIndices = this.cars.map(car => this.transmissionMap.get(car.transmission));
-        const sellerIndices = this.cars.map(car => this.sellerTypeMap.get(car.sellerType));
-        
-        this.updateStatus('🚀 Starting training with car features...');
-        
-        // Training loop
-        const numBatches = Math.ceil(carIndices.length / this.config.batchSize);
-        
-        for (let epoch = 0; epoch < this.config.epochs; epoch++) {
-            let epochLoss = 0;
+        try {
+            // Initialize model
+            this.model = new CarFinderModel(
+                this.brandMap.size,
+                this.fuelTypeMap.size,
+                this.transmissionMap.size,
+                this.sellerTypeMap.size,
+                this.config.embeddingDim
+            );
             
-            for (let batch = 0; batch < numBatches; batch++) {
-                const start = batch * this.config.batchSize;
-                const end = Math.min(start + this.config.batchSize, carIndices.length);
+            // Prepare training data
+            const carIndices = Array.from({length: this.cars.length}, (_, i) => i);
+            const brandIndices = this.cars.map(car => this.brandMap.get(car.brand));
+            const fuelIndices = this.cars.map(car => this.fuelTypeMap.get(car.fuelType));
+            const transmissionIndices = this.cars.map(car => this.transmissionMap.get(car.transmission));
+            const sellerIndices = this.cars.map(car => this.sellerTypeMap.get(car.sellerType));
+            
+            this.updateStatus('🚀 Starting AI training with advanced feature learning...');
+            
+            // Training loop
+            const numBatches = Math.ceil(carIndices.length / this.config.batchSize);
+            
+            for (let epoch = 0; epoch < this.config.epochs; epoch++) {
+                let epochLoss = 0;
                 
-                const batchCars = carIndices.slice(start, end);
-                const batchBrands = brandIndices.slice(start, end);
-                const batchFuels = fuelIndices.slice(start, end);
-                const batchTransmissions = transmissionIndices.slice(start, end);
-                const batchSellers = sellerIndices.slice(start, end);
-                
-                const loss = await this.model.trainStep(
-                    batchCars, batchBrands, batchFuels, batchTransmissions, batchSellers
-                );
-                epochLoss += loss;
-                
-                this.lossHistory.push(loss);
-                this.updateLossChart();
-                
-                if (batch % 5 === 0) {
-                    this.updateStatus(`📚 Epoch ${epoch + 1}/${this.config.epochs}, Batch ${batch}/${numBatches}, Loss: ${loss.toFixed(4)}`);
+                for (let batch = 0; batch < numBatches; batch++) {
+                    const start = batch * this.config.batchSize;
+                    const end = Math.min(start + this.config.batchSize, carIndices.length);
+                    
+                    const batchCars = carIndices.slice(start, end);
+                    const batchBrands = brandIndices.slice(start, end);
+                    const batchFuels = fuelIndices.slice(start, end);
+                    const batchTransmissions = transmissionIndices.slice(start, end);
+                    const batchSellers = sellerIndices.slice(start, end);
+                    
+                    const loss = await this.model.trainStep(
+                        batchCars, batchBrands, batchFuels, batchTransmissions, batchSellers
+                    );
+                    epochLoss += loss;
+                    
+                    this.lossHistory.push(loss);
+                    this.updateLossChart();
+                    
+                    if (batch % 3 === 0) {
+                        this.updateStatus(`📚 Epoch ${epoch + 1}/${this.config.epochs} • Batch ${batch + 1}/${numBatches} • Loss: ${loss.toFixed(4)}`);
+                    }
+                    
+                    // Allow UI to update
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
-                // Allow UI to update
-                await new Promise(resolve => setTimeout(resolve, 0));
+                epochLoss /= numBatches;
+                this.updateStatus(`🎉 Epoch ${epoch + 1}/${this.config.epochs} completed • Average Loss: ${epochLoss.toFixed(4)}`);
             }
             
-            epochLoss /= numBatches;
-            this.updateStatus(`🎉 Epoch ${epoch + 1}/${this.config.epochs} completed. Average loss: ${epochLoss.toFixed(4)}`);
+            this.updateStatus('🏆 AI training completed! Ready to find your perfect car match.');
+            trainBtn.innerHTML = '<span class="icon">✅</span>AI Trained!';
+            
+        } catch (error) {
+            this.updateStatus(`❌ Training error: ${error.message}`);
+            console.error('Training error:', error);
+        } finally {
+            this.isTraining = false;
+            setTimeout(() => {
+                trainBtn.disabled = false;
+                trainBtn.innerHTML = '<span class="icon">🧠</span>Train AI Model';
+            }, 2000);
         }
-        
-        this.isTraining = false;
-        document.getElementById('train').disabled = false;
-        
-        this.updateStatus('🏆 Training completed! Click "Find Cars" to get recommendations.');
         
         // Visualize embeddings
         this.visualizeEmbeddings();
@@ -260,18 +305,18 @@ class CarFinderApp {
         
         ctx.stroke();
         
-        // Add labels
+        // Add labels with better styling
         ctx.fillStyle = '#2c3e50';
-        ctx.font = '12px Segoe UI';
-        ctx.fillText(`Min: ${minLoss.toFixed(4)}`, 10, canvas.height - 10);
-        ctx.fillText(`Max: ${maxLoss.toFixed(4)}`, 10, 20);
-        ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, canvas.width - 100, 20);
+        ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(`Min Loss: ${minLoss.toFixed(4)}`, 15, canvas.height - 15);
+        ctx.fillText(`Max Loss: ${maxLoss.toFixed(4)}`, 15, 25);
+        ctx.fillText(`Current: ${this.lossHistory[this.lossHistory.length - 1].toFixed(4)}`, canvas.width - 120, 25);
     }
     
     async visualizeEmbeddings() {
         if (!this.model) return;
         
-        this.updateStatus('🎨 Computing PCA projection for car embeddings...');
+        this.updateStatus('🎨 Generating car similarity visualization...');
         
         const canvas = document.getElementById('embeddingChart');
         const ctx = canvas.getContext('2d');
@@ -306,62 +351,52 @@ class CarFinderApp {
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Color by price range
-            const priceRanges = [
-                { max: 5, color: '#6ecadc' },    // Low price
-                { max: 15, color: '#4bb5c3' },   // Medium price
-                { max: 25, color: '#3498db' },   // High price
-                { max: Infinity, color: '#2980b9' } // Luxury
-            ];
+            // Color by brand
+            const brandColors = {
+                'Maruti': '#6ecadc',
+                'Hyundai': '#4bb5c3', 
+                'Honda': '#3498db',
+                'Toyota': '#2980b9',
+                'Tata': '#27ae60',
+                'Kia': '#9b59b6',
+                'Ford': '#e74c3c',
+                'Mahindra': '#e67e22',
+                'Renault': '#f1c40f',
+                'Volkswagen': '#1abc9c'
+            };
             
             this.cars.forEach((car, i) => {
-                const priceRange = priceRanges.find(range => car.presentPrice <= range.max);
-                const color = priceRange ? priceRange.color : '#2980b9';
+                const color = brandColors[car.brand] || '#95a5a6';
                 
-                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 60) + 30;
-                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 60) + 30;
+                const x = ((projected[i][0] - xMin) / xRange) * (canvas.width - 80) + 40;
+                const y = ((projected[i][1] - yMin) / yRange) * (canvas.height - 80) + 40;
                 
-                const pointGradient = ctx.createRadialGradient(x, y, 0, x, y, 6);
-                pointGradient.addColorStop(0, color + 'CC');
+                const pointGradient = ctx.createRadialGradient(x, y, 0, x, y, 8);
+                pointGradient.addColorStop(0, color + 'DD');
                 pointGradient.addColorStop(1, color + '66');
                 
                 ctx.fillStyle = pointGradient;
                 ctx.beginPath();
-                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
                 ctx.fill();
+                
+                // Add glow effect
+                ctx.shadowColor = color + '80';
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
             });
             
             // Add title and labels
             ctx.fillStyle = '#2c3e50';
-            ctx.font = '16px Segoe UI';
-            ctx.fillText('Car Embeddings Projection (PCA) - Colored by Price', 20, 30);
-            ctx.font = '12px Segoe UI';
-            ctx.fillText(`Visualizing ${this.cars.length} cars - similar cars cluster together`, 20, 50);
+            ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText('Car Similarity Map - AI Clustering', 30, 35);
+            ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText(`Visualizing ${this.cars.length} vehicles - Similar cars cluster together`, 30, 60);
             
-            // Add legend
-            ctx.fillStyle = '#6ecadc';
-            ctx.fillRect(20, canvas.height - 80, 10, 10);
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillText('Budget (<5L)', 35, canvas.height - 70);
-            
-            ctx.fillStyle = '#4bb5c3';
-            ctx.fillRect(120, canvas.height - 80, 10, 10);
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillText('Mid-range (5-15L)', 135, canvas.height - 70);
-            
-            ctx.fillStyle = '#3498db';
-            ctx.fillRect(240, canvas.height - 80, 10, 10);
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillText('Premium (15-25L)', 255, canvas.height - 70);
-            
-            ctx.fillStyle = '#2980b9';
-            ctx.fillRect(360, canvas.height - 80, 10, 10);
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillText('Luxury (>25L)', 375, canvas.height - 70);
-            
-            this.updateStatus('✅ Embedding visualization completed.');
+            this.updateStatus('✅ Car similarity visualization completed.');
         } catch (error) {
-            this.updateStatus(`❌ Error in visualization: ${error.message}`);
+            this.updateStatus(`❌ Visualization error: ${error.message}`);
         }
     }
     
@@ -429,11 +464,15 @@ class CarFinderApp {
     
     async findCars() {
         if (!this.model) {
-            this.updateStatus('❌ Model not trained yet.');
+            this.updateStatus('❌ Please train the AI model first.');
             return;
         }
         
-        this.updateStatus('🔍 Finding cars matching your preferences...');
+        const findBtn = document.getElementById('findCars');
+        findBtn.disabled = true;
+        findBtn.innerHTML = '<span class="icon">🔍</span>Finding Matches...';
+        
+        this.updateStatus('🔍 Analyzing your preferences and finding perfect car matches...');
         
         try {
             // Create user preference vector
@@ -469,13 +508,20 @@ class CarFinderApp {
                 return scoreB - scoreA;
             });
             
-            const topRecommendations = candidateCars.slice(0, 10);
+            const topRecommendations = candidateCars.slice(0, 8);
             
             // Display results
             this.displayResults(topRecommendations);
             
+            findBtn.innerHTML = '<span class="icon">✅</span>Matches Found!';
+            
         } catch (error) {
             this.updateStatus(`❌ Error finding cars: ${error.message}`);
+        } finally {
+            setTimeout(() => {
+                findBtn.disabled = false;
+                findBtn.innerHTML = '<span class="icon">🔍</span>Find Perfect Cars';
+            }, 2000);
         }
     }
     
@@ -515,26 +561,30 @@ class CarFinderApp {
         const resultsDiv = document.getElementById('results');
         
         let html = `
-            <h2 style="color: #6ecadc; margin-bottom: 20px;">🚗 Top Car Recommendations</h2>
-            <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #e8f4f8, #d4edf2); border-radius: 10px; border-left: 4px solid #6ecadc;">
-                <strong>🎯 Your Preferences:</strong> 
-                Max Budget: ₹${this.userPreferences.maxBudget}L | 
-                Fuel: ${this.userPreferences.fuelType} | 
-                Transmission: ${this.userPreferences.transmission} | 
-                Seller: ${this.userPreferences.sellerType} | 
-                Max Kms: ${this.userPreferences.maxKms.toLocaleString()}
+            <h2 style="color: var(--primary); margin-bottom: 25px; font-size: 2em; font-weight: 400;">
+                <span class="icon">🚗</span>Your Perfect Car Matches
+            </h2>
+            <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, rgba(232, 244, 248, 0.9), rgba(212, 237, 242, 0.9)); border-radius: 20px; border-left: 6px solid var(--primary);">
+                <strong style="font-size: 16px;"><span class="icon">🎯</span> Your Preferences:</strong> 
+                <div style="margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px;">
+                    <div>💰 <strong>Budget:</strong> ₹${this.userPreferences.maxBudget}L</div>
+                    <div>⛽ <strong>Fuel:</strong> ${this.userPreferences.fuelType}</div>
+                    <div>⚙️ <strong>Transmission:</strong> ${this.userPreferences.transmission}</div>
+                    <div>🏪 <strong>Seller:</strong> ${this.userPreferences.sellerType}</div>
+                    <div>📊 <strong>Max Kms:</strong> ${this.userPreferences.maxKms.toLocaleString()}</div>
+                </div>
             </div>
             <table>
                 <thead>
                     <tr>
                         <th>Rank</th>
-                        <th>Car</th>
+                        <th>Car Model</th>
                         <th>Brand</th>
                         <th>Year</th>
                         <th>Price (L)</th>
                         <th>Kms</th>
                         <th>Fuel</th>
-                        <th>Transmission</th>
+                        <th>Trans</th>
                         <th>Match Score</th>
                     </tr>
                 </thead>
@@ -543,25 +593,26 @@ class CarFinderApp {
         
         recommendations.forEach((rec, index) => {
             const car = rec.car;
-            const totalScore = Math.min(100, (rec.score + rec.valueScore) * 25); // Normalize to 0-100
+            const totalScore = Math.min(100, (rec.score + rec.valueScore) * 25);
+            const scoreColor = totalScore >= 80 ? '#27ae60' : totalScore >= 60 ? '#f39c12' : '#e74c3c';
             
             html += `
                 <tr>
-                    <td><strong>${index + 1}</strong></td>
-                    <td>${car.carName}</td>
+                    <td style="font-weight: 600; color: var(--primary);">#${index + 1}</td>
+                    <td style="font-weight: 500;">${car.carName}</td>
                     <td>${car.brand}</td>
                     <td>${car.year}</td>
-                    <td style="color: ${car.presentPrice <= this.userPreferences.maxBudget ? '#27ae60' : '#e74c3c'}">
-                        ₹${car.presentPrice.toFixed(2)}L
+                    <td style="color: ${car.presentPrice <= this.userPreferences.maxBudget ? '#27ae60' : '#e74c3c'}; font-weight: 500;">
+                        ₹${car.presentPrice.toFixed(1)}L
                     </td>
                     <td>${car.kmsDriven.toLocaleString()}</td>
                     <td>${car.fuelType}</td>
                     <td>${car.transmission}</td>
                     <td>
-                        <div style="background: #ecf0f1; border-radius: 10px; height: 8px; margin: 5px 0;">
+                        <div style="background: #ecf0f1; border-radius: 10px; height: 8px; margin: 5px 0; position: relative;">
                             <div style="background: linear-gradient(90deg, #6ecadc, #4bb5c3); width: ${totalScore}%; height: 100%; border-radius: 10px;"></div>
                         </div>
-                        ${totalScore.toFixed(1)}%
+                        <span style="color: ${scoreColor}; font-weight: 600;">${totalScore.toFixed(1)}%</span>
                     </td>
                 </tr>
             `;
@@ -570,17 +621,18 @@ class CarFinderApp {
         html += `
                 </tbody>
             </table>
-            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #ffeaa7, #fdcb6e); border-radius: 10px; border-left: 4px solid #f39c12;">
-                <strong>💡 Pro Tip:</strong> Consider test driving the top recommendations and comparing insurance costs before making a decision.
+            <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, rgba(255, 234, 167, 0.9), rgba(253, 203, 110, 0.9)); border-radius: 20px; border-left: 6px solid #f39c12;">
+                <strong style="font-size: 16px;"><span class="icon">💡</span> Pro Tip:</strong> 
+                <span style="font-size: 14px;">Schedule test drives for your top 3 matches and compare insurance quotes before making your final decision.</span>
             </div>
         `;
         
         resultsDiv.innerHTML = html;
-        this.updateStatus(`✅ Found ${recommendations.length} cars matching your preferences!`);
+        this.updateStatus(`✅ Found ${recommendations.length} perfect car matches for you!`);
     }
     
     updateStatus(message) {
-        document.getElementById('status').textContent = message;
+        document.getElementById('status').innerHTML = message;
     }
 }
 
