@@ -10,13 +10,22 @@ class GraphRenderer {
         this.height = 500;
         this.selectedNode = null;
         
+        console.log('🔧 GraphRenderer initialized for container:', containerId);
+        
+        // Проверяем что D3 доступен
+        if (typeof d3 === 'undefined') {
+            console.error('❌ D3.js is not available');
+            document.getElementById('graphStatus').innerHTML = '❌ D3.js library failed to load';
+            return;
+        }
+        
         this.initializeSVG();
     }
 
     initializeSVG() {
         const container = document.getElementById(this.containerId);
         if (!container) {
-            console.error(`Container with id '${this.containerId}' not found`);
+            console.error(`❌ Container with id '${this.containerId}' not found`);
             return;
         }
 
@@ -25,6 +34,8 @@ class GraphRenderer {
         
         this.width = container.clientWidth || 800;
         this.height = container.clientHeight || 500;
+
+        console.log('🎨 Creating SVG with dimensions:', this.width, 'x', this.height);
 
         this.svg = d3.select(`#${this.containerId}`)
             .append('svg')
@@ -42,11 +53,21 @@ class GraphRenderer {
 
         this.svg.call(zoom)
             .append('g');
+
+        console.log('✅ SVG initialized successfully');
     }
 
     renderGraph(graph, pageRankScores = null) {
+        console.log('🎨 Rendering graph with', graph.nodes.length, 'nodes and', graph.edges.length, 'edges');
+        
         if (!this.svg) {
+            console.log('🔄 SVG not initialized, reinitializing...');
             this.initializeSVG();
+        }
+
+        if (!this.svg) {
+            console.error('❌ SVG initialization failed');
+            return;
         }
 
         this.nodes = graph.nodes.map(node => ({
@@ -59,6 +80,8 @@ class GraphRenderer {
             target: this.nodes.find(n => n.id === edge.target)
         })).filter(link => link.source && link.target);
 
+        console.log('✅ Processed nodes:', this.nodes.length, 'links:', this.links.length);
+
         this.updateGraph();
     }
 
@@ -68,7 +91,10 @@ class GraphRenderer {
         // Clear existing elements
         g.selectAll('*').remove();
 
-        if (this.nodes.length === 0) return;
+        if (this.nodes.length === 0) {
+            console.warn('⚠️ No nodes to render');
+            return;
+        }
 
         // Create force simulation
         this.simulation = d3.forceSimulation(this.nodes)
@@ -144,6 +170,8 @@ class GraphRenderer {
         if (this.selectedNode !== null) {
             this.highlightNode(this.selectedNode);
         }
+
+        console.log('✅ Graph visualization updated');
     }
 
     getNodeRadius(pageRank) {
@@ -229,7 +257,12 @@ class GraphRenderer {
     }
 
     updatePageRankScores(pageRankScores) {
-        if (!pageRankScores) return;
+        if (!pageRankScores) {
+            console.warn('⚠️ No PageRank scores provided');
+            return;
+        }
+        
+        console.log('🔄 Updating graph with new PageRank scores');
         
         this.nodes.forEach(node => {
             node.pageRank = pageRankScores[node.id] || 0.001;
@@ -239,9 +272,5 @@ class GraphRenderer {
     }
 }
 
-// Initialize graph renderer when page loads
-let graphRenderer;
-document.addEventListener('DOMContentLoaded', () => {
-    graphRenderer = new GraphRenderer('graph');
-    window.graphRenderer = graphRenderer;
-});
+// Initialize graph renderer when dependencies are ready
+console.log('📦 GraphRenderer module loaded');
