@@ -7,21 +7,13 @@ class TwoTowerModel {
     this.embDim = embDim;
     this.hiddenDim = hiddenDim;
 
-    // User tower
-    this.userEmbedding = tf.variable(
-      tf.randomNormal([numUsers, embDim], 0, 0.1)
-    );
+    this.userEmbedding = tf.variable(tf.randomNormal([numUsers, embDim], 0, 0.1));
     this.userDense1 = tf.layers.dense({ units: hiddenDim, activation: 'relu' });
     this.userDense2 = tf.layers.dense({ units: hiddenDim, activation: 'relu' });
     this.userDenseOut = tf.layers.dense({ units: embDim, activation: null });
 
-    // Item tower
-    this.carEmbedding = tf.variable(
-      tf.randomNormal([numCars, embDim], 0, 0.1)
-    );
-    this.brandEmbedding = tf.variable(
-      tf.randomNormal([numBrands, embDim], 0, 0.1)
-    );
+    this.carEmbedding = tf.variable(tf.randomNormal([numCars, embDim], 0, 0.1));
+    this.brandEmbedding = tf.variable(tf.randomNormal([numBrands, embDim], 0, 0.1));
     this.itemDense1 = tf.layers.dense({ units: hiddenDim, activation: 'relu' });
     this.itemDense2 = tf.layers.dense({ units: hiddenDim, activation: 'relu' });
     this.itemDenseOut = tf.layers.dense({ units: embDim, activation: null });
@@ -32,7 +24,8 @@ class TwoTowerModel {
     let x = this.userDense1.apply(emb);
     x = this.userDense2.apply(x);
     x = this.userDenseOut.apply(x);
-    return tf.nn.l2Normalize(x, 1);
+    const norm = tf.linalg.normalize(x, 2, 1);
+    return norm.normalized;
   }
 
   itemForward(carIdx, brandIdx) {
@@ -42,11 +35,12 @@ class TwoTowerModel {
     let x = this.itemDense1.apply(concat);
     x = this.itemDense2.apply(x);
     x = this.itemDenseOut.apply(x);
-    return tf.nn.l2Normalize(x, 1);
+    const norm = tf.linalg.normalize(x, 2, 1);
+    return norm.normalized;
   }
 
   score(userEmb, itemEmb) {
-    return tf.sum(tf.mul(userEmb, itemEmb), 1, true); // (B,1)
+    return tf.sum(tf.mul(userEmb, itemEmb), 1, true);
   }
 
   compile(optimizer) {
@@ -65,16 +59,27 @@ class TwoTowerModel {
       const posScores = this.score(userEmb, posItemEmb);
       const negScores = this.score(userEmb, negItemEmb);
 
-      // In-batch softmax loss
-      const logits = tf.concat([posScores, negScores], 1); // (B, 1 + B)
+      const logits = tf.concat([posScores, negScores], 1);
       const labels = tf.zeros([userIdx.shape[0]], 'int32');
       const loss = tf.losses.sparseCategoricalCrossentropy(labels, logits);
+
+      this.optimizer.minimize(() => loss, true, [
+        this.userEmbedding,
+        this.carEmbedding,
+        this.brandEmbedding,
+        ...this.userDense1.trainableWeights,
+        ...this.userDense2.trainableWeights,
+        ...this.userDenseOut.trainableWeights,
+        ...this.itemDense1.trainableWeights,
+        ...this.itemDense2.trainableWeights,
+        ...this.itemDenseOut.trainableWeights
+      ]);
 
       return loss;
     });
   }
 
-  async getUserEmbedding(userIdx) {
+  getUserEmbedding(userIdx) {
     return tf.tidy(() => {
       const u = tf.tensor1d([userIdx], 'int32');
       const emb = this.userForward(u);
@@ -85,9 +90,9 @@ class TwoTowerModel {
 
   getScoresForAllItems(userEmb, allItemEmbs) {
     return tf.tidy(() => {
-      const u = tf.expandDims(userEmb, 0); // (1, D)
-      const scores = tf.matMul(u, allItemEmbs, false, true); // (1, N)
-      return tf.squeeze(scores, [0]); // (N,)
+      const u = tf.expandDims(userEmb, 0);
+      const scores = tf.matMul(u, allItemEmbs, false, true);
+      return tf.squeeze(scores, [0]);
     });
   }
 }
