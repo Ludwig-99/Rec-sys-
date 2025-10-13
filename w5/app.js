@@ -6,34 +6,99 @@ class PageRankApp {
         this.selectedNode = null;
         this.isComputing = false;
         
-        this.initializeEventListeners();
-        this.loadDefaultData();
+        console.log('🔧 PageRankApp constructor called');
+        
+        // Обновляем статус
+        this.updateGraphStatus('Initializing application...');
+        
+        // Даем время DOM полностью загрузиться
+        setTimeout(() => {
+            this.initializeEventListeners();
+            this.loadDefaultData();
+        }, 100);
+    }
+
+    updateGraphStatus(message) {
+        const statusElement = document.getElementById('graphStatus');
+        if (statusElement) {
+            statusElement.innerHTML = message;
+        }
     }
 
     initializeEventListeners() {
-        document.getElementById('computeBtn').addEventListener('click', () => this.computePageRank());
-        document.getElementById('resetBtn').addEventListener('click', () => this.resetGraph());
+        console.log('🔧 Initializing event listeners...');
+        
+        const computeBtn = document.getElementById('computeBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        
+        if (computeBtn) {
+            computeBtn.addEventListener('click', () => this.computePageRank());
+            console.log('✅ Compute button listener added');
+        } else {
+            console.error('❌ Compute button not found!');
+        }
+        
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.resetGraph());
+            console.log('✅ Reset button listener added');
+        } else {
+            console.error('❌ Reset button not found!');
+        }
     }
 
     async loadDefaultData() {
         try {
-            // Load the karate club dataset
-            const response = await fetch('data/karate.csv');
-            if (!response.ok) throw new Error('Failed to load data file');
+            console.log('📥 Loading default data...');
+            this.updateGraphStatus('Loading graph data...');
             
-            const csvText = await response.text();
+            let csvText;
+            try {
+                // Пробуем загрузить данные из файла
+                const response = await fetch('data/karate.csv');
+                if (!response.ok) throw new Error('Failed to load data file');
+                csvText = await response.text();
+                console.log('✅ CSV data loaded successfully');
+            } catch (error) {
+                console.warn('⚠️ Using demo data instead:', error);
+                csvText = this.getDemoData();
+            }
+            
             this.graph = this.parseCSVToGraph(csvText);
+            console.log('📊 Graph parsed:', this.graph);
             
-            // Initialize graph renderer if available
+            // Инициализируем граф
             if (window.graphRenderer) {
+                this.updateGraphStatus('Rendering graph...');
                 window.graphRenderer.renderGraph(this.graph);
+                console.log('✅ Graph rendered');
+                this.updateGraphStatus('✅ Graph ready! Click on nodes to see recommendations.');
+            } else {
+                console.error('❌ Graph renderer not available');
+                this.updateGraphStatus('❌ Graph renderer failed to initialize');
             }
             
             this.updateTable();
         } catch (error) {
-            console.error('Error loading data:', error);
-            this.showError('Error loading graph data. Please check if data/karate.csv exists.');
+            console.error('❌ Error loading data:', error);
+            this.updateGraphStatus('❌ Error loading graph data');
+            this.showError('Error loading graph data: ' + error.message);
         }
+    }
+
+    getDemoData() {
+        // Демо данные на случай если файл не доступен
+        return `1,2
+1,3
+1,4
+2,3
+2,4
+3,4
+4,5
+5,6
+6,7
+7,8
+8,9
+9,10`;
     }
 
     parseCSVToGraph(csvText) {
@@ -41,6 +106,8 @@ class PageRankApp {
         const nodes = new Set();
         
         const lines = csvText.trim().split('\n');
+        console.log('📝 Parsing CSV lines:', lines.length);
+        
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
@@ -57,6 +124,9 @@ class PageRankApp {
             nodes.add(source);
             nodes.add(target);
         }
+
+        console.log('👥 Found nodes:', Array.from(nodes));
+        console.log('🔗 Found edges:', edges.length);
 
         // Create adjacency list
         const adjacencyList = {};
@@ -81,15 +151,31 @@ class PageRankApp {
     }
 
     async computePageRank() {
-        if (this.isComputing || !this.graph) return;
+        console.log('🔄 Compute PageRank clicked');
+        
+        if (this.isComputing) {
+            console.log('⏳ Already computing, please wait...');
+            return;
+        }
+        
+        if (!this.graph) {
+            console.log('❌ No graph data available');
+            this.showError('No graph data available. Please load data first.');
+            return;
+        }
         
         this.isComputing = true;
         const computeBtn = document.getElementById('computeBtn');
         computeBtn.disabled = true;
-        computeBtn.textContent = 'Computing...';
+        computeBtn.innerHTML = '<div class="loading"></div>Computing...';
 
         try {
+            console.log('🧮 Starting PageRank computation...');
+            this.updateGraphStatus('Computing PageRank scores...');
+            
             this.pageRankScores = await computePageRank(this.graph.adjacencyList, 50, 0.85);
+            console.log('✅ PageRank computed:', this.pageRankScores);
+            
             this.updateTable();
             
             // Update graph visualization with new scores
@@ -101,9 +187,13 @@ class PageRankApp {
             if (this.selectedNode !== null) {
                 this.showNodeDetails(this.selectedNode);
             }
+            
+            this.showSuccess('PageRank computation completed!');
+            this.updateGraphStatus('✅ PageRank computed! Click on nodes to see recommendations.');
         } catch (error) {
-            console.error('Error computing PageRank:', error);
-            this.showError('Error computing PageRank scores. Check console for details.');
+            console.error('❌ Error computing PageRank:', error);
+            this.showError('Error computing PageRank scores: ' + error.message);
+            this.updateGraphStatus('❌ Error computing PageRank');
         } finally {
             this.isComputing = false;
             computeBtn.disabled = false;
@@ -112,6 +202,8 @@ class PageRankApp {
     }
 
     resetGraph() {
+        console.log('🔄 Reset Graph clicked');
+        
         this.pageRankScores = null;
         this.selectedNode = null;
         
@@ -127,13 +219,22 @@ class PageRankApp {
         `;
         
         this.loadDefaultData();
+        this.showSuccess('Graph reset to initial state');
     }
 
     updateTable() {
         const tableBody = document.getElementById('tableBody');
+        if (!tableBody) {
+            console.error('❌ Table body not found');
+            return;
+        }
+
         tableBody.innerHTML = '';
 
-        if (!this.graph) return;
+        if (!this.graph) {
+            console.log('❌ No graph data available');
+            return;
+        }
 
         // Create array of nodes with their scores and sort by PageRank (descending)
         const nodesWithScores = this.graph.nodes.map(node => ({
@@ -144,6 +245,8 @@ class PageRankApp {
 
         // Sort by PageRank score (descending)
         nodesWithScores.sort((a, b) => b.score - a.score);
+
+        console.log('📋 Updating table with', nodesWithScores.length, 'nodes');
 
         nodesWithScores.forEach(nodeData => {
             const row = document.createElement('tr');
@@ -158,7 +261,10 @@ class PageRankApp {
                 <td>${nodeData.friends.join(', ')}</td>
             `;
             
-            row.addEventListener('click', () => this.selectNode(nodeData.id));
+            row.addEventListener('click', () => {
+                console.log('🖱️ Table row clicked:', nodeData.id);
+                this.selectNode(nodeData.id);
+            });
             
             if (this.selectedNode === nodeData.id) {
                 row.classList.add('selected');
@@ -169,6 +275,7 @@ class PageRankApp {
     }
 
     selectNode(nodeId) {
+        console.log('🎯 Selecting node:', nodeId);
         this.selectedNode = nodeId;
         
         // Update table selection
@@ -187,11 +294,18 @@ class PageRankApp {
 
     showNodeDetails(nodeId) {
         const nodeDetails = document.getElementById('nodeDetails');
+        if (!nodeDetails) {
+            console.error('❌ Node details container not found');
+            return;
+        }
+
         const friends = this.graph.adjacencyList[nodeId] || [];
         
         let recommendationsHtml = '';
         if (this.pageRankScores) {
             const recommendations = this.getRecommendations(nodeId);
+            console.log('💡 Recommendations for node', nodeId, ':', recommendations);
+            
             if (recommendations.length > 0) {
                 recommendationsHtml = `
                     <div class="recommendations">
@@ -250,6 +364,8 @@ class PageRankApp {
     }
 
     connectNodes(sourceId, targetId) {
+        console.log('🔗 Connecting nodes:', sourceId, targetId);
+        
         if (!this.graph) return;
         
         // Add edge to graph
@@ -273,18 +389,76 @@ class PageRankApp {
     }
 
     showError(message) {
-        alert(`Error: ${message}`);
+        console.error('❌ Error:', message);
+        this.showNotification(message, 'error');
     }
 
     showSuccess(message) {
-        // You could replace this with a nicer notification system
-        console.log(`Success: ${message}`);
+        console.log('✅ Success:', message);
+        this.showNotification(message, 'success');
+    }
+
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        const bgColor = type === 'error' ? 
+            'linear-gradient(135deg, #e74c3c, #c0392b)' : 
+            'linear-gradient(135deg, #2ecc71, #27ae60)';
+            
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${bgColor};
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-weight: bold;
+            max-width: 300px;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentNode) {
+                document.body.removeChild(notification);
+            }
+        }, 4000);
     }
 }
 
-// Initialize app when page loads
-let app;
-document.addEventListener('DOMContentLoaded', () => {
-    app = new PageRankApp();
-    window.app = app;
-});
+// Инициализация приложения когда все готово
+function initializeApplication() {
+    console.log('🚀 Initializing PageRank Application...');
+    
+    if (typeof d3 === 'undefined') {
+        console.error('❌ D3.js not loaded');
+        return;
+    }
+    
+    if (typeof tf === 'undefined') {
+        console.error('❌ TensorFlow.js not loaded');
+        return;
+    }
+    
+    if (typeof computePageRank === 'undefined') {
+        console.error('❌ PageRank module not loaded');
+        return;
+    }
+    
+    if (typeof GraphRenderer === 'undefined') {
+        console.error('❌ GraphRenderer not loaded');
+        return;
+    }
+    
+    console.log('✅ All dependencies loaded, creating app instance...');
+    window.app = new PageRankApp();
+}
+
+// Ждем когда все будет готово
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApplication);
+} else {
+    setTimeout(initializeApplication, 100);
+}
