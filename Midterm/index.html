@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AutoMatch — Frutiger Aero Edition</title>
+  <title>Car Recommender</title>
   <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600&display=swap" rel="stylesheet">
   <style>
     * {
@@ -36,23 +36,32 @@
       margin-bottom: 24px;
       font-weight: 600;
       text-shadow: 0 2px 5px rgba(230, 81, 0, 0.15);
+      font-size: 2.2em;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-top: 10px;
     }
 
     label {
       display: block;
-      margin-top: 22px;
+      margin-top: 16px;
       font-weight: 600;
       color: #37474f;
+      font-size: 15px;
     }
 
     input, select {
       width: 100%;
-      padding: 13px;
-      margin-top: 8px;
+      padding: 12px;
+      margin-top: 6px;
       border: 1px solid #b3e5fc;
       border-radius: 14px;
       background: rgba(224, 247, 250, 0.7);
-      font-size: 16px;
+      font-size: 15px;
       transition: all 0.3s ease;
     }
 
@@ -108,21 +117,55 @@
 </head>
 <body>
   <div class="container">
-    <h1>AutoMatch — Frutiger Aero Edition</h1>
-    <label for="maxPrice">Max Budget (USD)</label>
-    <input type="number" id="maxPrice" placeholder="e.g. 10000" value="12000" />
+    <h1>Car Recommender</h1>
 
-    <label for="fuelType">Fuel Type</label>
-    <select id="fuelType">
-      <option value="">Any</option>
-      <option value="Petrol">Petrol</option>
-      <option value="Diesel">Diesel</option>
-      <option value="CNG">CNG</option>
-      <option value="LPG">LPG</option>
-    </select>
+    <div class="filters">
+      <div>
+        <label for="maxPrice">Max Budget (USD)</label>
+        <input type="number" id="maxPrice" placeholder="e.g. 10000" value="12000" />
+      </div>
 
-    <label for="minYear">Min Year</label>
-    <input type="number" id="minYear" placeholder="e.g. 2015" value="2015" min="1990" max="2024" />
+      <div>
+        <label for="fuelType">Fuel Type</label>
+        <select id="fuelType">
+          <option value="">Any</option>
+          <option value="Petrol">Petrol</option>
+          <option value="Diesel">Diesel</option>
+          <option value="CNG">CNG</option>
+          <option value="LPG">LPG</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="transmission">Transmission</label>
+        <select id="transmission">
+          <option value="">Any</option>
+          <option value="Manual">Manual</option>
+          <option value="Automatic">Automatic</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="minYear">Min Year</label>
+        <input type="number" id="minYear" placeholder="e.g. 2015" value="2015" min="1990" max="2024" />
+      </div>
+
+      <div>
+        <label for="maxKm">Max Mileage (km)</label>
+        <input type="number" id="maxKm" placeholder="e.g. 50000" value="100000" />
+      </div>
+
+      <div>
+        <label for="owner">Owner Type</label>
+        <select id="owner">
+          <option value="">Any</option>
+          <option value="First Owner">First Owner</option>
+          <option value="Second Owner">Second Owner</option>
+          <option value="Third Owner">Third Owner</option>
+          <option value="Fourth & Above Owner">Fourth+ Owner</option>
+        </select>
+      </div>
+    </div>
 
     <button onclick="getRecommendations()">Get Recommendations</button>
 
