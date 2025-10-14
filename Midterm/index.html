@@ -20,7 +20,7 @@
     }
 
     .container {
-      max-width: 900px;
+      max-width: 950px;
       margin: auto;
       background: rgba(255, 255, 255, 0.88);
       backdrop-filter: blur(12px);
@@ -36,28 +36,28 @@
       margin-bottom: 24px;
       font-weight: 600;
       text-shadow: 0 2px 5px rgba(230, 81, 0, 0.15);
-      font-size: 2.2em;
+      font-size: 2.4em;
     }
 
     .filters {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
       margin-top: 10px;
     }
 
     label {
       display: block;
-      margin-top: 16px;
+      margin-top: 14px;
       font-weight: 600;
       color: #37474f;
-      font-size: 15px;
+      font-size: 14px;
     }
 
     input, select {
       width: 100%;
-      padding: 12px;
-      margin-top: 6px;
+      padding: 11px;
+      margin-top: 5px;
       border: 1px solid #b3e5fc;
       border-radius: 14px;
       background: rgba(224, 247, 250, 0.7);
@@ -92,7 +92,7 @@
     }
 
     #results {
-      margin-top: 32px;
+      margin-top: 30px;
     }
 
     .car-card {
@@ -112,6 +112,13 @@
     .car-card strong {
       color: #e65100;
       font-size: 19px;
+    }
+
+    #loading {
+      text-align: center;
+      color: #e65100;
+      margin-top: 20px;
+      font-style: italic;
     }
   </style>
 </head>
@@ -168,7 +175,7 @@
     </div>
 
     <button onclick="getRecommendations()">Get Recommendations</button>
-
+    <div id="loading"></div>
     <div id="results"></div>
   </div>
 
