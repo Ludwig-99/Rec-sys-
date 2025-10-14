@@ -3,24 +3,114 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AutoMatch — Car Recommender</title>
+  <title>AutoMatch — Frutiger Aero Edition</title>
+  <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
-    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    h1 { text-align: center; color: #2c3e50; }
-    label { display: block; margin-top: 15px; font-weight: bold; }
-    input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
-    button { margin-top: 20px; padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; }
-    button:hover { background: #2980b9; }
-    #results { margin-top: 20px; }
-    .car-card { padding: 10px; margin: 10px 0; border-left: 4px solid #3498db; background: #f5f9ff; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #e0f7fa, #fff3e0);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      border-radius: 22px;
+      padding: 30px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+    }
+
+    h1 {
+      text-align: center;
+      color: #e65100;
+      margin-bottom: 24px;
+      font-weight: 600;
+      text-shadow: 0 2px 5px rgba(230, 81, 0, 0.15);
+    }
+
+    label {
+      display: block;
+      margin-top: 22px;
+      font-weight: 600;
+      color: #37474f;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 13px;
+      margin-top: 8px;
+      border: 1px solid #b3e5fc;
+      border-radius: 14px;
+      background: rgba(224, 247, 250, 0.7);
+      font-size: 16px;
+      transition: all 0.3s ease;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #ff9800;
+      box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.25);
+    }
+
+    button {
+      margin-top: 28px;
+      padding: 15px;
+      background: linear-gradient(to right, #ff9800, #ff5722);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 19px;
+      font-weight: 600;
+      box-shadow: 0 5px 15px rgba(255, 152, 0, 0.35);
+      transition: transform 0.25s, box-shadow 0.25s;
+    }
+
+    button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 7px 20px rgba(255, 152, 0, 0.45);
+    }
+
+    #results {
+      margin-top: 32px;
+    }
+
+    .car-card {
+      padding: 18px;
+      margin: 16px 0;
+      background: rgba(255, 243, 224, 0.8);
+      border-radius: 16px;
+      border-left: 6px solid #ff9800;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.09);
+      transition: transform 0.25s ease;
+    }
+
+    .car-card:hover {
+      transform: scale(1.012);
+    }
+
+    .car-card strong {
+      color: #e65100;
+      font-size: 19px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>AutoMatch — Find Your Perfect Car</h1>
-    <label for="maxPrice">Max Budget (INR)</label>
-    <input type="number" id="maxPrice" placeholder="e.g. 500000" value="700000" />
+    <h1>AutoMatch — Frutiger Aero Edition</h1>
+    <label for="maxPrice">Max Budget (USD)</label>
+    <input type="number" id="maxPrice" placeholder="e.g. 10000" value="12000" />
 
     <label for="fuelType">Fuel Type</label>
     <select id="fuelType">
