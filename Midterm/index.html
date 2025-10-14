@@ -1,138 +1,44 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Car Recommender System – Frutiger Aero UI</title>
+  <title>AutoMatch — Car Recommender</title>
   <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #a0d8ef 0%, #ffffff 100%);
-      margin: 0;
-      padding: 20px;
-      color: #222;
-    }
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: rgba(255, 255, 255, 0.85);
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.2);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-    h1 {
-      text-align: center;
-      color: #0066cc;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .btn-group {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      margin: 20px 0;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 8px;
-      background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
-      color: white;
-      cursor: pointer;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 8px rgba(0,0,0,0.15);
-    }
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-    #status {
-      text-align: center;
-      margin: 16px 0;
-      font-weight: bold;
-      color: #007acc;
-    }
-    .chart-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      justify-content: center;
-      margin: 20px 0;
-    }
-    canvas {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    #results {
-      margin-top: 30px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 16px;
-    }
-    th, td {
-      padding: 10px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background-color: #e6f4ff;
-      color: #0066cc;
-    }
-    .tip {
-      font-size: 14px;
-      color: #555;
-      margin-top: 20px;
-      padding: 12px;
-      background: #f0f9ff;
-      border-left: 4px solid #00a8ff;
-      border-radius: 0 8px 8px 0;
-    }
+    body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h1 { text-align: center; color: #2c3e50; }
+    label { display: block; margin-top: 15px; font-weight: bold; }
+    input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 20px; padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; }
+    button:hover { background: #2980b9; }
+    #results { margin-top: 20px; }
+    .car-card { padding: 10px; margin: 10px 0; border-left: 4px solid #3498db; background: #f5f9ff; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🚗 Car Recommender System</h1>
-    <div class="btn-group">
-      <button id="loadBtn">Load Data</button>
-      <button id="trainBtn" disabled>Train Model</button>
-      <button id="testBtn" disabled>Test Recommendation</button>
-    </div>
-    <div id="status">Ready. Click "Load Data" to begin.</div>
+    <h1>AutoMatch — Find Your Perfect Car</h1>
+    <label for="maxPrice">Max Budget (INR)</label>
+    <input type="number" id="maxPrice" placeholder="e.g. 500000" value="700000" />
 
-    <div class="chart-container">
-      <div>
-        <h3>Training Loss</h3>
-        <canvas id="lossChart" width="500" height="200"></canvas>
-      </div>
-      <div>
-        <h3>Item Embedding Projection (PCA)</h3>
-        <canvas id="embeddingChart" width="500" height="200"></canvas>
-      </div>
-    </div>
+    <label for="fuelType">Fuel Type</label>
+    <select id="fuelType">
+      <option value="">Any</option>
+      <option value="Petrol">Petrol</option>
+      <option value="Diesel">Diesel</option>
+      <option value="CNG">CNG</option>
+      <option value="LPG">LPG</option>
+    </select>
+
+    <label for="minYear">Min Year</label>
+    <input type="number" id="minYear" placeholder="e.g. 2015" value="2015" min="1990" max="2024" />
+
+    <button onclick="getRecommendations()">Get Recommendations</button>
 
     <div id="results"></div>
-
-    <div class="tip">
-      <strong>How to use:</strong> Place your car datasets in <code>/data/</code> as <code>cars.csv</code> (columns: Car_Name,Year,Selling_Price,Present_Price,Kms_Driven,Fuel_Type,Seller_Type,Transmission,Owner).<br>
-      This demo runs entirely in-browser using TensorFlow.js. Training may take 1–3 minutes on modern devices.<br>
-      Host this folder on GitHub Pages for live demo!
-    </div>
   </div>
 
-  <!-- Load TensorFlow.js from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
-  <script src="two-tower.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
